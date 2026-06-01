@@ -1,0 +1,11 @@
+{
+  "name": "@global-logistics/documentation-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compiles custom documentation language to HTML, Markdown and more",
+  "main": "index.js",
+  "dependencies": {
+    "@global-logistics/core": "*",
+    "express": "^4.18.0"
+  }
+}

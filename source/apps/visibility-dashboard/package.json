@@ -1,0 +1,11 @@
+{
+  "name": "@global-logistics/visibility-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Supply chain visibility and analytics for the Global Logistics Mesh",
+  "main": "index.js",
+  "dependencies": {
+    "@global-logistics/core": "*",
+    "@global-logistics/shipment-tracker": "*"
+  }
+}

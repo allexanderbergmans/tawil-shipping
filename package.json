@@ -1,0 +1,26 @@
+{
+  "name": "global-logistics-mesh",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Global Logistics & Supply Chain Mesh — powering the future of logistics within the Nation of Bir Tawil",
+  "workspaces": [
+    "source/apps/core",
+    "source/apps/shipment-tracker",
+    "source/apps/compliance-engine",
+    "source/apps/documentation-engine",
+    "source/apps/notification-engine",
+    "source/apps/visibility-dashboard",
+    "source/apps/api-gateway",
+    "source/apps/web-frontend",
+    "source/apps/cli",
+    "source/apps/p2p-network",
+    "source/apps/auth",
+    "source/apps/audit"
+  ],
+  "scripts": {
+    "start": "node source/index.js",
+    "dev": "node source/index.js",
+    "glm": "node source/apps/cli/bin/glm.js",
+    "peers": "node source/scripts/peers.mjs"
+  }
+}

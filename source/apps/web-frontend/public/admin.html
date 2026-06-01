@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav"></nav>
+</div>
+<div class="main">
+  <div class="page-header"><h2>Administration</h2><span class="ws-status disconnected">Offline</span></div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('users',this)">Users</div>
+    <div class="tab" onclick="switchTab('keys',this)">API Keys</div>
+    <div class="tab" onclick="switchTab('audit',this)">Audit Log</div>
+  </div>
+
+  <div id="tab-users" class="tab-content active">
+    <div class="card">
+      <div class="card-header">Users</div>
+      <div style="margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="showCreateUser()">+ Add User</button></div>
+      <div id="usersList"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-keys" class="tab-content">
+    <div class="card">
+      <div class="card-header">API Keys</div>
+      <div style="margin-bottom:12px;display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="showCreateKey()">+ Generate Key</button>
+        <input id="keyUserId" placeholder="User ID (optional)">
+      </div>
+      <div id="keysList"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-audit" class="tab-content">
+    <div class="card">
+      <div class="card-header">Audit Log</div>
+      <div class="filter-bar">
+        <div class="form-group"><label>Action</label><input id="auditAction" placeholder="Filter by action" oninput="loadAudit()"></div>
+        <div class="form-group"><label>Days</label><input id="auditDays" placeholder="7" style="width:80px" oninput="loadAudit()"></div>
+        <div class="form-group"><label>Limit</label><input id="auditLimit" placeholder="100" style="width:80px" oninput="loadAudit()"></div>
+      </div>
+      <div id="auditList"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <h3>Create User</h3>
+    <div class="form-group"><label>Username</label><input id="newUsername"></div>
+    <div class="form-group"><label>Email</label><input id="newEmail" type="email"></div>
+    <div class="form-group"><label>Password</label><input id="newPassword" type="password"></div>
+    <div class="form-group"><label>Role</label><select id="newRole"><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal('userModal')">Cancel</button><button class="btn btn-primary" onclick="createUser()">Create</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="keyModal">
+  <div class="modal">
+    <h3>New API Key</h3>
+    <p style="font-size:14px;color:var(--gray-600);margin-bottom:16px">Copy this key now — it won't be shown again.</p>
+    <div id="newKeyDisplay" class="code-block" style="display:none"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal('keyModal')">Close</button></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(loggedIn => {
+  if (!loggedIn) return location.href = '/login.html';
+  if (!APP.isAdmin()) return location.href = '/';
+  APP.renderNav();
+  loadUsers(); loadKeys(); loadAudit();
+});
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+async function loadUsers() {
+  try {
+    const users = await api('/admin/users');
+    document.getElementById('usersList').innerHTML = `<table><thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Active</th><th>Created</th></tr></thead><tbody>
+      ${users.map(u => `<tr><td>${u.username}</td><td>${u.email}</td><td><span class="badge ${u.role === 'admin' ? 'red' : u.role === 'operator' ? 'blue' : 'gray'}">${u.role}</span></td><td>${u.is_active ? '✓' : '✗'}</td><td>${formatDate(u.created_at)}</td></tr>`).join('')}
+    </tbody></table>`;
+  } catch(e) { document.getElementById('usersList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+function showCreateUser() { document.getElementById('userModal').classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+async function createUser() {
+  const data = {
+    username: document.getElementById('newUsername').value,
+    email: document.getElementById('newEmail').value,
+    password: document.getElementById('newPassword').value,
+    role: document.getElementById('newRole').value,
+  };
+  try { await api('/admin/users', { method: 'POST', body: data }); closeModal('userModal'); loadUsers(); }
+  catch(e) { alert(e.message); }
+}
+
+async function loadKeys() {
+  try {
+    const userId = document.getElementById('keyUserId').value;
+    const q = userId ? '?user_id=' + userId : '';
+    const keys = await api('/admin/api-keys' + q);
+    document.getElementById('keysList').innerHTML = keys.length === 0 ? '<div class="empty-state">No API keys.</div>' :
+      `<table><thead><tr><th>Name</th><th>ID</th><th>Last Used</th><th>Active</th><th></th></tr></thead><tbody>
+      ${keys.map(k => `<tr><td>${k.name}</td><td><code style="font-size:12px">${k.id}</code></td><td>${formatDate(k.last_used_at)}</td><td>${k.is_active ? '✓' : '✗'}</td><td><button class="btn btn-sm" style="background:var(--danger);color:white" onclick="deleteKey('${k.id}')">Delete</button></td></tr>`).join('')}
+    </tbody></table>`;
+  } catch(e) { document.getElementById('keysList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function showCreateKey() {
+  const userId = document.getElementById('keyUserId').value || undefined;
+  const name = prompt('Key name:');
+  if (!name) return;
+  try {
+    const result = await api('/admin/api-keys', { method: 'POST', body: { name, user_id: userId } });
+    document.getElementById('newKeyDisplay').textContent = result.key;
+    document.getElementById('newKeyDisplay').style.display = 'block';
+    document.getElementById('keyModal').classList.add('active');
+    loadKeys();
+  } catch(e) { alert(e.message); }
+}
+
+async function deleteKey(id) {
+  if (!confirm('Delete this API key?')) return;
+  try { await api('/admin/api-keys/' + id, { method: 'DELETE' }); loadKeys(); }
+  catch(e) { alert(e.message); }
+}
+
+async function loadAudit() {
+  try {
+    const params = new URLSearchParams();
+    const action = document.getElementById('auditAction').value;
+    const days = document.getElementById('auditDays').value;
+    const limit = document.getElementById('auditLimit').value;
+    if (action) params.set('action', action);
+    if (days) params.set('days', days);
+    if (limit) params.set('limit', limit);
+    const q = params.toString() ? '?' + params : '';
+    const logs = await api('/admin/audit-log' + q);
+    document.getElementById('auditList').innerHTML = logs.length === 0 ? '<div class="empty-state">No audit logs.</div>' :
+      `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Resource</th><th>Details</th></tr></thead><tbody>
+      ${logs.map(l => `<tr><td style="white-space:nowrap">${formatDate(l.created_at)}</td><td>${l.username || l.user_id || '—'}</td><td><code style="font-size:12px">${l.action}</code></td><td>${l.resource_type || '—'}</td><td style="font-size:12px;color:var(--gray-500)">${l.details ? JSON.stringify(l.details).slice(0,80) : '—'}</td></tr>`).join('')}
+    </tbody></table>`;
+  } catch(e) { document.getElementById('auditList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+</script>
+</body>
+</html>

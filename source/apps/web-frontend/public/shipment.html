@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipment Detail — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html" class="active">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main" id="app">
+  <div class="page-header">
+    <h2 id="shipmentTitle">Shipment</h2>
+    <a href="/shipments.html" class="btn">&larr; Back</a>
+  </div>
+  <div id="shipmentContent"><div class="loading">Loading...</div></div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+const id = new URLSearchParams(location.search).get('id');
+
+APP.checkAuth().then(() => {
+  APP.renderNav();
+  load();
+});
+
+async function load() {
+  if (!id) { document.getElementById('shipmentContent').innerHTML = '<div class="error">No shipment ID.</div>'; return; }
+  try {
+    const s = await api('/shipments/' + id);
+    document.getElementById('shipmentTitle').textContent = 'Shipment ' + s.reference;
+    document.getElementById('shipmentContent').innerHTML = `
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+        <div>
+          <div class="card">
+            <div class="card-header">Shipment Info</div>
+            ${[
+              ['Status', statusBadge(s.status)], ['Reference', s.reference],
+              ['Origin', s.origin], ['Destination', s.destination],
+              ['Cargo', s.cargo_description || '\u2014'], ['Value', formatCurrency(s.cargo_value)],
+              ['Shipper', (s.shipper_name||'\u2014') + (s.shipper_country ? ' ('+s.shipper_country+')' : '')],
+              ['Consignee', (s.consignee_name||'\u2014') + (s.consignee_country ? ' ('+s.consignee_country+')' : '')],
+              ['Port of Loading', s.port_of_loading||'\u2014'], ['Port of Discharge', s.port_of_discharge||'\u2014'],
+              ['Est. Departure', formatDate(s.estimated_departure)], ['Est. Arrival', formatDate(s.estimated_arrival)],
+            ].map(([l,v]) => `<div class="detail-row"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('')}
+          </div>
+          <div class="card">
+            <div class="card-header">Tracking Timeline</div>
+            <div id="timeline"><div class="loading">Loading...</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="card-header">Actions</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button class="btn btn-sm btn-primary" onclick="recordTrack()">Record Tracking Event</button>
+              <button class="btn btn-sm btn-primary" onclick="runCompliance()">Run Compliance Check</button>
+              <button class="btn btn-sm" onclick="approveShipment()">Approve / Clear</button>
+            </div>
+            <div id="actionResult" style="margin-top:12px"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">Compliance</div>
+            <div id="complianceResults"><div class="loading">Loading...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header">Documents</div>
+            <div id="documents"><div class="loading">Loading...</div></div>
+          </div>
+        </div>
+      </div>
+    `;
+    loadTimeline(); loadCompliance(); loadDocuments();
+  } catch(e) { document.getElementById('shipmentContent').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function loadTimeline() {
+  try {
+    const ev = await api('/shipments/' + id + '/tracking');
+    if (ev.length === 0) { document.getElementById('timeline').innerHTML = '<div class="empty-state">No events.</div>'; return; }
+    document.getElementById('timeline').innerHTML = '<div class="timeline">' + ev.map(e =>
+      `<div class="timeline-item"><div class="time">${formatDate(e.timestamp)}</div>
+      <div class="title">${statusBadge(e.status)} ${e.location ? 'at ' + e.location : ''}</div>
+      <div class="desc">${e.description || ''}</div></div>`
+    ).join('') + '</div>';
+  } catch(e) { document.getElementById('timeline').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function loadCompliance() {
+  try {
+    const cr = await api('/compliance/results/' + id);
+    if (cr.length === 0) { document.getElementById('complianceResults').innerHTML = '<div class="empty-state">No checks yet.</div>'; return; }
+    document.getElementById('complianceResults').innerHTML = cr.map(c =>
+      `<div style="padding:6px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
+        <span class="badge ${c.result === 'pass' ? 'green' : c.result === 'flag' ? 'yellow' : 'red'}">${c.result}</span>
+        <span style="margin-left:6px;color:var(--gray-600)">${c.rule_description || c.rule_type}</span>
+      </div>`
+    ).join('');
+  } catch(e) { document.getElementById('complianceResults').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function loadDocuments() {
+  try {
+    const docs = await api('/documents/shipment/' + id);
+    if (docs.length === 0) { document.getElementById('documents').innerHTML = '<div class="empty-state">No docs.</div>'; return; }
+    document.getElementById('documents').innerHTML = docs.map(d =>
+      `<div style="padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
+        <strong>${d.title || d.type}</strong> <span class="badge gray">${d.format}</span>
+        <div style="color:var(--gray-400);font-size:12px">${formatDate(d.created_at)}</div>
+      </div>`
+    ).join('');
+  } catch(e) { document.getElementById('documents').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function recordTrack() {
+  const status = prompt('Status:');
+  if (!status) return;
+  const location = prompt('Location:') || '';
+  const description = prompt('Description:') || '';
+  try {
+    await api('/shipments/' + id + '/track', { method: 'POST', body: { status, location, description } });
+    document.getElementById('actionResult').innerHTML = '<div style="color:var(--success);font-size:13px">Event recorded.</div>';
+    loadTimeline();
+  } catch(e) { alert(e.message); }
+}
+
+async function runCompliance() {
+  try {
+    const r = await api('/compliance/check/' + id, { method: 'POST' });
+    document.getElementById('actionResult').innerHTML =
+      `<div style="font-size:13px">${r.passed ? 'All passed' : 'Issues found'}. ${r.flags.length} flagged, ${r.failures.length} blocked.</div>`;
+    loadCompliance();
+  } catch(e) { alert(e.message); }
+}
+
+async function approveShipment() {
+  const status = confirm('Approve and clear this shipment?') ? 'approved' : 'rejected';
+  if (!status) return;
+  try {
+    await api('/compliance/approve/' + id, { method: 'POST', body: { status } });
+    document.getElementById('actionResult').innerHTML = `<div style="color:var(--success);font-size:13px">Shipment ${status}.</div>`;
+    load();
+  } catch(e) { alert(e.message); }
+}
+</script>
+</body>
+</html>

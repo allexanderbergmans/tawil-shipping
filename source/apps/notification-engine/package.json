@@ -1,0 +1,10 @@
+{
+  "name": "@global-logistics/notification-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Event-driven notification engine for the Global Logistics Mesh",
+  "main": "index.js",
+  "dependencies": {
+    "@global-logistics/core": "*"
+  }
+}

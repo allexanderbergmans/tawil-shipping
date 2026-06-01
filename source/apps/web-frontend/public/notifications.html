@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notifications — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html" class="active">Notifications</a>
+    <a href="/network.html">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Notifications</h2>
+    <div style="display:flex;gap:8px"><span class="ws-status disconnected">Offline</span><label style="display:flex;align-items:center;gap:4px;font-size:14px;cursor:pointer">
+        <input type="checkbox" id="unreadOnly" onchange="load()"> Unread only
+      </label>
+      <button class="btn btn-sm" onclick="markAllRead()">Mark All Read</button>
+    </div>
+  </div>
+  <div class="card">
+    <div id="notifList"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+async function load() {
+  try {
+    const unread = document.getElementById('unreadOnly').checked;
+    const q = unread ? '?unread=true' : '';
+    const list = await api("/notifications" + q);
+    if (list.length === 0) {
+      document.getElementById("notifList").innerHTML = '<div class="empty-state">No notifications.</div>';
+      return;
+    }
+    document.getElementById("notifList").innerHTML = list.map(n => `
+      <div style="padding:12px 0;border-bottom:1px solid var(--gray-200);${!n.is_read ? 'background:var(--primary-light);margin:0 -12px;padding:12px;border-radius:6px' : ''}">
+        <div style="display:flex;justify-content:space-between;align-items:start">
+          <div>
+            <span class="badge ${n.type === 'compliance_alert' ? 'red' : n.type === 'shipment_update' ? 'blue' : 'green'}">${n.type}</span>
+            <strong style="font-size:14px;margin-left:8px">${n.subject}</strong>
+          </div>
+          <div style="font-size:12px;color:var(--gray-400);white-space:nowrap">${formatDate(n.created_at)}</div>
+        </div>
+        <div style="font-size:13px;color:var(--gray-600);margin-top:4px">${n.body}</div>
+        ${!n.is_read ? `<button class="btn btn-sm" style="margin-top:8px" onclick="markRead('${n.id}')">Mark Read</button>` : ''}
+      </div>
+    `).join("");
+  } catch(e) { document.getElementById("notifList").innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function markRead(id) {
+  try { await api("/notifications/" + id + "/read", { method: "PATCH" }); load(); }
+  catch(e) { alert(e.message); }
+}
+
+async function markAllRead() {
+  try { await api("/notifications/read-all", { method: "POST" }); load(); }
+  catch(e) { alert(e.message); }
+}
+load();
+</script>
+</body>
+</html>

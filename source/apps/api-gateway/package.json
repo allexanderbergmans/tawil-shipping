@@ -1,0 +1,23 @@
+{
+  "name": "@global-logistics/api-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "REST API gateway for the Global Logistics & Supply Chain Mesh",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.0",
+    "helmet": "^7.0.0",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.0.0",
+    "joi": "^17.0.0",
+    "ws": "^8.0.0",
+    "@global-logistics/auth": "*",
+    "@global-logistics/audit": "*",
+    "@global-logistics/shipment-tracker": "*",
+    "@global-logistics/compliance-engine": "*",
+    "@global-logistics/documentation-engine": "*",
+    "@global-logistics/notification-engine": "*",
+    "@global-logistics/visibility-dashboard": "*",
+    "@global-logistics/p2p-network": "*"
+  }
+}

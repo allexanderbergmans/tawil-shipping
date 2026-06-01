@@ -1,0 +1,20 @@
+{
+  "name": "@global-logistics/cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Command-line interface for the Global Logistics & Supply Chain Mesh",
+  "bin": {
+    "glm": "./bin/glm.js"
+  },
+  "dependencies": {
+    "@global-logistics/api-gateway": "*",
+    "@global-logistics/compliance-engine": "*",
+    "@global-logistics/documentation-engine": "*",
+    "@global-logistics/shipment-tracker": "*",
+    "@global-logistics/visibility-dashboard": "*",
+    "@global-logistics/core": "*",
+    "@global-logistics/notification-engine": "*",
+    "chalk": "^4.1.2",
+    "commander": "^11.0.0"
+  }
+}

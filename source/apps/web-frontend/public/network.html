@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+.dot-online { display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success);margin-right:6px }
+.dot-offline { display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--gray-300);margin-right:6px }
+.node-card { background:white;border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px }
+.node-card h3 { font-size:15px;margin-bottom:8px }
+.node-card .meta { font-size:13px;color:var(--gray-500);margin-bottom:4px }
+.mesh-viz { display:flex;flex-wrap:wrap;gap:16px;justify-content:center;padding:20px 0 }
+.mesh-node { background:var(--gray-100);border:2px solid var(--gray-300);border-radius:12px;padding:16px;text-align:center;min-width:140px;position:relative }
+.mesh-node.self { border-color:var(--primary);background:var(--primary-light) }
+.mesh-node .label { font-size:13px;font-weight:600;color:var(--gray-800) }
+.mesh-node .addr { font-size:11px;color:var(--gray-400) }
+.conn-line { display:flex;align-items:center;color:var(--gray-400);font-size:18px }
+
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html" class="active">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>P2P Network</h2>
+    <span class="ws-status disconnected">Offline</span>
+  </div>
+
+  <div class="node-card">
+    <h3>Local Node</h3>
+    <div id="localNode"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Mesh Topology</div>
+    <div id="meshViz"><div class="empty-state">No peers connected. Start other nodes to build the mesh.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Connected Peers</div>
+    <div id="peerList"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Real-time Events</div>
+    <div id="liveEvents" style="max-height:300px;overflow-y:auto"><div class="empty-state">Waiting for events...</div></div>
+  </div>
+</div>
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+function connectWS() {
+  const el = document.getElementById("liveEvents");
+  WS.onMessage((msg) => {
+    try {
+      const entry = document.createElement("div");
+      entry.style.cssText = "padding:6px 0;border-bottom:1px solid var(--gray-200);font-size:13px";
+      const icon = msg.type === "tracking_event" ? "📍" : msg.type === "compliance_alert" ? "⚠️" : "📄";
+      entry.textContent = `${icon} [${new Date(msg.timestamp).toLocaleTimeString()}] ${msg.type}: ${JSON.stringify(msg.data).slice(0, 100)}`;
+      el.insertBefore(entry, el.firstChild);
+      if (el.children.length > 50) el.removeChild(el.lastChild);
+    } catch {}
+  });
+}
+
+async function load() {
+  try {
+    const net = await api("/network");
+    const ln = document.getElementById("localNode");
+    ln.innerHTML = net.running ? `
+      <div class="meta"><strong>Node ID:</strong> ${net.nodeId}</div>
+      <div class="meta"><strong>Address:</strong> ${location.hostname}:${net.port}</div>
+      <div class="meta"><strong>Peers:</strong> ${net.peerCount} connected</div>
+      <div class="meta"><strong>Status:</strong> <span style="color:var(--success)">Running</span></div>
+    ` : `
+      <div class="meta">P2P not active. Set P2P_PORT or P2P_PEERS env vars.</div>
+    `;
+
+    const mv = document.getElementById("meshViz");
+    if (net.running && net.peers.length > 0) {
+      let html = '<div class="mesh-viz">';
+      html += `<div class="mesh-node self"><div class="label">${net.nodeId}</div><div class="addr">${net.port}</div><div style="font-size:11px;color:var(--success)">● self</div></div>`;
+      for (const p of net.peers) {
+        html += '<div class="conn-line">⟷</div>';
+        html += `<div class="mesh-node"><div class="label">${p.nodeId || 'unknown'}</div><div class="addr">${p.address}</div><div style="font-size:11px;color:var(--gray-400)">${formatDate(p.connectedAt)}</div></div>`;
+      }
+      html += '</div>';
+      mv.innerHTML = html;
+    } else {
+      mv.innerHTML = '<div class="empty-state">No peers connected. Start other nodes to build the mesh.</div>';
+    }
+
+    const pl = document.getElementById("peerList");
+    if (net.peers.length === 0) {
+      pl.innerHTML = '<div class="empty-state">No peers connected.</div>';
+    } else {
+      pl.innerHTML = `<table><thead><tr><th>Node ID</th><th>Address</th><th>Connected</th></tr></thead><tbody>
+        ${net.peers.map(p => `<tr><td><span class="dot-online"></span>${p.nodeId || 'unknown'}</td><td>${p.address}</td><td>${formatDate(p.connectedAt)}</td></tr>`).join("")}
+      </tbody></table>`;
+    }
+  } catch(e) {
+    document.getElementById("localNode").innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+connectWS();
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

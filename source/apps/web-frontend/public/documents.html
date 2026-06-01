@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Documents — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html" class="active">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Document Compiler</h2>
+    <button class="btn btn-primary btn-sm" id="addTemplateBtn" style="display:none" onclick="showTemplateModal()">+ New Template</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('compiler',this)">Compiler</div>
+    <div class="tab" onclick="switchTab('templates',this)">Templates</div>
+  </div>
+
+  <div id="tab-compiler" class="tab-content active">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="card">
+        <div class="card-header">Source</div>
+        <div class="form-group">
+          <label>Format</label>
+          <select id="docFormat"><option value="html">HTML</option><option value="markdown">Markdown</option></select>
+        </div>
+        <div class="form-group">
+          <label>Shipment ID (optional)</label>
+          <input id="docShipmentId" placeholder="shp_...">
+        </div>
+        <div class="form-group">
+          <label>Document Type (optional)</label>
+          <input id="docType" placeholder="e.g. bill_of_lading, invoice, report">
+        </div>
+        <textarea id="docSource" rows="20" style="font-family:monospace;font-size:13px;resize:vertical;width:100%">---
+title: Bill of Lading
+author: Global Logistics Mesh
+---
+
+# Bill of Lading
+
+**Shipper:** Acme Corp
+**Destination:** Port Said
+
+@table
+| Item | Qty |
+| Widget A | 500 |
+@endtable</textarea>
+        <div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-primary" onclick="compileDoc()">Compile</button>
+          <button class="btn btn-primary" onclick="compileAndSaveDoc()">Compile &amp; Save</button>
+        </div>
+      </div>
+      <div><div class="card">
+        <div class="card-header">Output</div>
+        <div id="docOutput"><div class="empty-state">Compile a document to see the output.</div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div id="tab-templates" class="tab-content">
+    <div class="card">
+      <div class="card-header">Document Templates</div>
+      <div id="templatesList"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="templateModal">
+  <div class="modal">
+    <h3>New Template</h3>
+    <div class="form-group"><label>Name</label><input id="tplName" placeholder="Bill of Lading"></div>
+    <div class="form-group"><label>Type</label><input id="tplType" placeholder="bill_of_lading"></div>
+    <div class="form-group"><label>Variables (comma-separated)</label><input id="tplVars" placeholder="shipper, consignee, destination"></div>
+    <div class="form-group"><label>Content</label><textarea id="tplContent" rows="10" style="font-family:monospace;font-size:13px;resize:vertical;width:100%"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeTemplateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => {
+  APP.renderNav();
+  if (APP.isAdmin()) document.getElementById('addTemplateBtn').style.display = '';
+  loadTemplates();
+});
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+async function compileDoc() {
+  const source = document.getElementById('docSource').value;
+  const format = document.getElementById('docFormat').value;
+  if (!source) return;
+  try {
+    const result = await api('/documents/compile', { method: 'POST', body: { source, format } });
+    if (format === 'html') { document.getElementById('docOutput').innerHTML = result.output; }
+    else { document.getElementById('docOutput').innerHTML = `<pre style="background:var(--gray-100);padding:16px;border-radius:6px;overflow-x:auto;font-size:13px">${escHtml(result.output)}</pre>`; }
+  } catch(e) { document.getElementById('docOutput').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function compileAndSaveDoc() {
+  const source = document.getElementById('docSource').value;
+  const format = document.getElementById('docFormat').value;
+  const shipmentId = document.getElementById('docShipmentId').value;
+  const type = document.getElementById('docType').value || 'report';
+  if (!source || !shipmentId) { alert('Shipment ID is required to save.'); return; }
+  try {
+    const result = await api('/documents', { method: 'POST', body: { shipment_id: shipmentId, type, title: 'Compiled Document', source, format } });
+    document.getElementById('docOutput').innerHTML = `<div style="color:var(--success)">Document saved (${result.id}).</div>`;
+  } catch(e) { document.getElementById('docOutput').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function loadTemplates() {
+  try {
+    const templates = await api('/documents/templates/all');
+    if (templates.length === 0) { document.getElementById('templatesList').innerHTML = '<div class="empty-state">No templates yet.</div>'; return; }
+    document.getElementById('templatesList').innerHTML = templates.map(t => {
+      const vars = JSON.parse(t.variables || '[]');
+      return `<div style="padding:12px 0;border-bottom:1px solid var(--gray-200)">
+        <strong>${t.name}</strong> <span class="badge gray">${t.type}</span>
+        ${vars.length ? `<span style="font-size:12px;color:var(--gray-400);margin-left:8px">Variables: ${vars.join(', ')}</span>` : ''}
+        <div><button class="btn btn-sm" style="margin-top:4px" onclick="useTemplate('${t.id}')">Use Template</button></div>
+      </div>`;
+    }).join('');
+  } catch(e) { document.getElementById('templatesList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function useTemplate(id) {
+  try {
+    const templates = await api('/documents/templates/all');
+    const tpl = templates.find(t => t.id === id);
+    if (tpl) { document.getElementById('docSource').value = tpl.content; switchTab('compiler', document.querySelector('.tab')); }
+  } catch(e) { alert(e.message); }
+}
+
+function showTemplateModal() { document.getElementById('templateModal').classList.add('active'); }
+function closeTemplateModal() { document.getElementById('templateModal').classList.remove('active'); }
+
+async function saveTemplate() {
+  const vars = document.getElementById('tplVars').value.split(',').map(v => v.trim()).filter(Boolean);
+  const body = {
+    name: document.getElementById('tplName').value,
+    type: document.getElementById('tplType').value,
+    content: document.getElementById('tplContent').value,
+    variables: vars,
+  };
+  try { await api('/documents/templates', { method: 'POST', body }); closeTemplateModal(); loadTemplates(); }
+  catch(e) { alert(e.message); }
+}
+
+function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+</script>
+</body>
+</html>

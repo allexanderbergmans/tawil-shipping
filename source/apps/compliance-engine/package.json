@@ -1,0 +1,10 @@
+{
+  "name": "@global-logistics/compliance-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trade compliance engine — sanctions, customs, restricted party screening",
+  "main": "index.js",
+  "dependencies": {
+    "@global-logistics/core": "*"
+  }
+}

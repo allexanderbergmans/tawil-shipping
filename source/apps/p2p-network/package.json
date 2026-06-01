@@ -1,0 +1,11 @@
+{
+  "name": "@global-logistics/p2p-network",
+  "version": "1.0.0",
+  "private": true,
+  "description": "P2P networking layer for the Global Logistics & Supply Chain Mesh",
+  "main": "index.js",
+  "dependencies": {
+    "@global-logistics/core": "*",
+    "ws": "^8.0.0"
+  }
+}

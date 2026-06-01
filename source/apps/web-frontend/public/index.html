@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/" class="active">Dashboard</a>
+    <a href="/shipments.html">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main" id="app">
+  <div class="page-header">
+    <h2>Dashboard</h2>
+    <div style="display:flex;gap:8px"><span class="ws-status disconnected">Offline</span><a href="/export/shipments/csv" class="btn btn-sm" id="exportCsv" onclick="return doExport(event)">Export CSV</a>
+      <a href="/login.html" id="loginBtn" class="btn btn-sm btn-primary">Sign In</a>
+    </div>
+  </div>
+
+  <div class="search-wrapper">
+    <div class="search-bar">
+      <input id="searchInput" placeholder="Search shipments, documents, notifications..." oninput="doSearch()">
+      <button class="btn btn-sm" onclick="doSearch()">Search</button>
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div class="stats-grid" id="stats"></div>
+
+  <div class="chart-grid">
+    <div class="card"><div class="card-header">Shipment Status</div><div class="chart-wrap"><canvas id="chartStatus"></canvas></div></div>
+    <div class="card"><div class="card-header">7-Day Timeline</div><div class="chart-wrap"><canvas id="chartTimeline"></canvas></div></div>
+    <div class="card"><div class="card-header">Compliance Results</div><div class="chart-wrap"><canvas id="chartCompliance"></canvas></div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <div class="card-header">Recent Activity</div>
+      <div id="activity"><div class="loading">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Bottlenecks</div>
+      <div id="bottlenecks"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Compliance Rules Summary</div>
+    <div id="rulesSummary"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+let searchTimeout;
+
+APP.checkAuth().then(() => {
+  APP.renderNav();
+  if (APP.isLoggedIn()) document.getElementById('loginBtn').style.display = 'none';
+  load();
+  setInterval(load, 30000);
+});
+
+let _charts = [];
+
+async function load() {
+  _charts.forEach(c => c.destroy());
+  _charts = [];
+  const [ov, act, bn, rules, timeline, comp] = await Promise.all([
+    api("/visibility/overview").catch(() => null),
+    api("/visibility/activity?limit=10").catch(() => []),
+    api("/visibility/bottlenecks").catch(() => []),
+    api("/compliance/rules").catch(() => []),
+    api("/visibility/timeline?days=7").catch(() => []),
+    api("/visibility/compliance-summary").catch(() => null),
+  ]);
+
+  const colors = { pending: "#f59e0b", in_transit: "#3b82f6", cleared: "#10b981", delivered: "#059669", delayed: "#ef4444", exception: "#dc2626", customs_hold: "#8b5cf6", fail: "#ef4444", pass: "#10b981", flag: "#f59e0b" };
+
+  if (ov) {
+    document.getElementById("stats").innerHTML = `
+      <div class="stat-card"><div class="label">Total Shipments</div><div class="value blue">${ov.total}</div></div>
+      <div class="stat-card"><div class="label">In Transit</div><div class="value green">${ov.inTransit}</div></div>
+      <div class="stat-card"><div class="label">Pending Compliance</div><div class="value ${ov.pendingCompliance > 0 ? 'red' : 'green'}">${ov.pendingCompliance}</div></div>
+      <div class="stat-card"><div class="label">Total Cargo Value</div><div class="value blue">${formatCurrency(ov.totalValue)}</div></div>
+      <div class="stat-card"><div class="label">Status Breakdown</div><div class="value" style="font-size:16px">${(ov.byStatus || []).map(s => `<span class="badge ${s.status === 'in_transit' ? 'blue' : s.status === 'pending' ? 'yellow' : 'green'}">${s.status}: ${s.count}</span>`).join(' ')}</div></div>
+    `;
+  }
+
+  // Chart 1: Status doughnut
+  if (ov && ov.byStatus) {
+    _charts.push(new Chart(document.getElementById("chartStatus"), {
+      type: "doughnut",
+      data: {
+        labels: ov.byStatus.map(s => s.status.replace(/_/g, " ")),
+        datasets: [{ data: ov.byStatus.map(s => s.count), backgroundColor: ov.byStatus.map(s => colors[s.status] || "#6b7280") }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 12, padding: 8 } } } }
+    }));
+  }
+
+  // Chart 2: Timeline line
+  if (timeline && timeline.length) {
+    const days = [...new Set(timeline.map(t => t.day))].sort();
+    const statuses = [...new Set(timeline.map(t => t.status))];
+    const ds = statuses.map(st => ({
+      label: st.replace(/_/g, " "),
+      data: days.map(d => { const f = timeline.find(t => t.day === d && t.status === st); return f ? f.count : 0; }),
+      borderColor: colors[st] || "#6b7280",
+      fill: false, tension: 0.3, spanGaps: true
+    }));
+    _charts.push(new Chart(document.getElementById("chartTimeline"), {
+      type: "line",
+      data: { labels: days, datasets: ds },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 12, padding: 8 } } }, scales: { x: { ticks: { font: { size: 10 } } } } }
+    }));
+  }
+
+  // Chart 3: Compliance bar
+  if (comp && comp.byResult) {
+    _charts.push(new Chart(document.getElementById("chartCompliance"), {
+      type: "bar",
+      data: {
+        labels: comp.byResult.map(r => r.result),
+        datasets: [{ label: "Checks", data: comp.byResult.map(r => r.count), backgroundColor: comp.byResult.map(r => colors[r.result] || "#6b7280") }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    }));
+  }
+
+  // Activity
+  if (act.length === 0) { document.getElementById("activity").innerHTML = '<div class="empty-state">No activity yet.</div>'; }
+  else {
+    document.getElementById("activity").innerHTML = `<table><thead><tr><th>Time</th><th>Ref</th><th>Status</th><th>Location</th></tr></thead><tbody>
+      ${act.map(e => `<tr><td style="white-space:nowrap">${formatDate(e.timestamp)}</td><td>${e.reference || '—'}</td><td>${statusBadge(e.status)}</td><td>${e.location || '—'}</td></tr>`).join("")}
+    </tbody></table>`;
+  }
+
+  // Bottlenecks
+  if (bn.length === 0) { document.getElementById("bottlenecks").innerHTML = '<div class="empty-state">No bottlenecks.</div>'; }
+  else {
+    document.getElementById("bottlenecks").innerHTML = `<table><thead><tr><th>Location</th><th>Events</th><th>Shipments</th></tr></thead><tbody>
+      ${bn.map(b => `<tr><td>${b.location}</td><td>${b.events}</td><td>${b.shipments}</td></tr>`).join("")}
+    </tbody></table>`;
+  }
+
+  // Rules summary
+  if (rules.length) {
+    const byType = {};
+    for (const r of rules) { byType[r.type] = (byType[r.type] || 0) + 1; }
+    document.getElementById("rulesSummary").innerHTML = Object.entries(byType).map(([t, c]) =>
+      `<span class="badge blue" style="font-size:13px;margin:0 4px 4px 0">${t}: ${c}</span>`
+    ).join('') + ` <span style="font-size:13px;color:var(--gray-400)">(${rules.length} total rules)</span>`;
+  }
+}
+
+async function doSearch() {
+  clearTimeout(searchTimeout);
+  const q = document.getElementById('searchInput').value;
+  const results = document.getElementById('searchResults');
+  if (q.length < 2) { results.classList.remove('active'); return; }
+  searchTimeout = setTimeout(async () => {
+    try {
+      const data = await api('/search?q=' + encodeURIComponent(q));
+      let html = '';
+      if (data.shipments.length) {
+        html += '<div class="sr-group">Shipments</div>';
+        html += data.shipments.map(s => `<div class="sr-item" onclick="location.href='/shipment.html?id=${s.id}'">${s.reference} — ${s.origin} → ${s.destination} ${statusBadge(s.status)}</div>`).join('');
+      }
+      if (data.documents.length) {
+        html += '<div class="sr-group">Documents</div>';
+        html += data.documents.map(d => `<div class="sr-item" onclick="location.href='/shipment.html?id=${d.shipment_id}'">${d.title || d.type} — ${d.shipment_id}</div>`).join('');
+      }
+      if (data.notifications.length) {
+        html += '<div class="sr-group">Notifications</div>';
+        html += data.notifications.map(n => `<div class="sr-item">${n.subject}</div>`).join('');
+      }
+      if (!html) html = '<div class="sr-item" style="color:var(--gray-400)">No results found</div>';
+      results.innerHTML = html;
+      results.classList.add('active');
+    } catch { results.classList.remove('active'); }
+  }, 300);
+}
+
+function doExport(e) {
+  if (!APP.isLoggedIn()) { e.preventDefault(); alert('Please sign in first'); return; }
+}
+
+document.addEventListener('click', (e) => {
+  const results = document.getElementById('searchResults');
+  if (!e.target.closest('.search-wrapper')) results.classList.remove('active');
+});
+</script>
+</body>
+</html>

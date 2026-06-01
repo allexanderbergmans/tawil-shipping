@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audit Log — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html">Network</a>
+    <a href="/audit.html" class="active">Audit Log</a>
+  </nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Audit Log</h2>
+    <div><span class="ws-status disconnected">Offline</span></div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="form-group"><label>Action</label><input id="fAction" placeholder="e.g. POST" oninput="scheduleLoad()"></div>
+    <div class="form-group"><label>Resource</label><input id="fResource" placeholder="e.g. shipments" oninput="scheduleLoad()"></div>
+    <div class="form-group"><label>User</label><input id="fUser" placeholder="User ID" oninput="scheduleLoad()"></div>
+    <div class="form-group"><label>Days</label><input id="fDays" placeholder="7" value="7" style="width:70px" oninput="scheduleLoad()"></div>
+    <div class="form-group" style="display:flex;align-items:end">
+      <button class="btn btn-sm" onclick="document.getElementById('fAction').value='';document.getElementById('fResource').value='';document.getElementById('fUser').value='';document.getElementById('fDays').value='7';load()">Clear</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Activity Timeline</span>
+      <span style="font-size:12px;color:var(--gray-400)" id="logCount"></span>
+    </div>
+    <div style="height:140px"><canvas id="auditChart"></canvas></div>
+  </div>
+
+  <div id="auditLogs"><div class="loading">Loading...</div></div>
+  <div id="auditPagination" class="pagination" style="display:none"></div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+let _page = 1;
+const PAGE_SIZE = 25;
+
+APP.checkAuth().then(() => {
+  APP.renderNav();
+  load();
+});
+
+let _loadTimer;
+function scheduleLoad() { clearTimeout(_loadTimer); _loadTimer = setTimeout(() => { _page = 1; load(); }, 400); }
+
+async function load(pg) {
+  if (pg !== undefined) _page = pg;
+  try {
+    const params = new URLSearchParams();
+    const action = document.getElementById('fAction').value;
+    const resource = document.getElementById('fResource').value;
+    const user = document.getElementById('fUser').value;
+    const days = document.getElementById('fDays').value;
+    if (action) params.set('action', action);
+    if (resource) params.set('resource_type', resource);
+    if (user) params.set('user_id', user);
+    if (days) params.set('days', days);
+    params.set('limit', PAGE_SIZE + 1);
+    params.set('offset', (_page - 1) * PAGE_SIZE);
+    const logs = await api('/admin/audit-log?' + params.toString());
+    const hasMore = logs.length > PAGE_SIZE;
+    if (hasMore) logs.pop();
+
+    document.getElementById('logCount').textContent = `${logs.length} entries`;
+
+    // Timeline chart
+    const chartCanvas = document.getElementById('auditChart');
+    const timeline = {};
+    logs.forEach(l => {
+      const day = l.created_at ? l.created_at.slice(0, 10) : 'unknown';
+      timeline[day] = (timeline[day] || 0) + 1;
+    });
+    const days = Object.keys(timeline).sort();
+    const chart = Chart.getChart(chartCanvas);
+    if (chart) chart.destroy();
+    new Chart(chartCanvas, {
+      type: 'bar',
+      data: { labels: days, datasets: [{ label: 'Events', data: days.map(d => timeline[d]), backgroundColor: '#3b82f6' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    });
+
+    // Table
+    const el = document.getElementById('auditLogs');
+    if (logs.length === 0) { el.innerHTML = '<div class="empty-state">No audit logs found.</div>'; document.getElementById('auditPagination').style.display = 'none'; return; }
+    el.innerHTML = `<table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Resource</th><th>Details</th><th>IP</th></tr></thead><tbody>
+      ${logs.map(l => `<tr>
+        <td style="white-space:nowrap;font-size:12px">${formatDate(l.created_at)}</td>
+        <td style="font-size:13px">${l.username || l.user_id || '<span class="badge gray">system</span>'}</td>
+        <td><code style="font-size:11px;background:var(--gray-100);padding:2px 6px;border-radius:4px">${escapeHtml(l.action)}</code></td>
+        <td style="font-size:13px;color:var(--gray-600)">${l.resource_type || '-'}${l.resource_id ? '/' + escapeHtml(l.resource_id).slice(0, 20) : ''}</td>
+        <td style="font-size:12px;color:var(--gray-500);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(JSON.stringify(l.details))}">${l.details ? escapeHtml(JSON.stringify(l.details)).slice(0, 60) : '-'}</td>
+        <td style="font-size:12px;color:var(--gray-400)">${l.ip_address || '-'}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+
+    // Pagination
+    const pgEl = document.getElementById('auditPagination');
+    pgEl.style.display = _page > 1 || hasMore ? 'flex' : 'none';
+    let pgHtml = `<span class="pg-info">Page ${_page}</span><div class="pg-btns">`;
+    pgHtml += `<button class="btn btn-sm" onclick="load(1)" ${_page <= 1 ? 'disabled' : ''}>&laquo; First</button>`;
+    pgHtml += `<button class="btn btn-sm" onclick="load(${_page - 1})" ${_page <= 1 ? 'disabled' : ''}>&lsaquo; Prev</button>`;
+    pgHtml += `<span class="pg-info" style="padding:0 8px">${_page}</span>`;
+    pgHtml += `<button class="btn btn-sm" onclick="load(${_page + 1})" ${!hasMore ? 'disabled' : ''}>Next &rsaquo;</button>`;
+    pgHtml += '</div>';
+    pgEl.innerHTML = pgHtml;
+  } catch(e) { document.getElementById('auditLogs').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+function escapeHtml(s) {
+  if (typeof s !== 'string') s = String(s);
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

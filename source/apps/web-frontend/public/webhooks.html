@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webhooks — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav"></nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Webhooks</h2>
+    <button class="btn btn-primary" onclick="showCreate()">+ New Webhook</button>
+  </div>
+  <div id="webhookList"><div class="loading">Loading...</div></div>
+</div>
+
+<div class="modal-overlay" id="whModal">
+  <div class="modal">
+    <h3 id="whModalTitle">New Webhook</h3>
+    <div class="form-group"><label>Name</label><input id="whName" placeholder="My webhook"></div>
+    <div class="form-group"><label>URL</label><input id="whUrl" placeholder="https://example.com/webhook"></div>
+    <div class="form-group"><label>Events</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="evtAll" value="*"> All Events</label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="wh-ev" value="shipment:tracking"> Shipment Tracking</label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="wh-ev" value="compliance:alert"> Compliance Alert</label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="wh-ev" value="document:created"> Document Created</label>
+      </div>
+    </div>
+    <div class="form-group"><label>Secret (optional)</label><input id="whSecret" placeholder="Signing secret"></div>
+    <input id="whEditId" type="hidden">
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWebhook()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(loggedIn => {
+  if (!loggedIn) return location.href = '/login.html';
+  if (!APP.isOperator()) return location.href = '/';
+  APP.renderNav();
+  loadWebhooks();
+});
+
+async function loadWebhooks() {
+  try {
+    const whs = await api('/webhooks');
+    if (whs.length === 0) { document.getElementById('webhookList').innerHTML = '<div class="empty-state">No webhooks configured.</div>'; return; }
+    document.getElementById('webhookList').innerHTML = whs.map(w => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:start">
+          <div>
+            <strong style="font-size:15px">${w.name}</strong>
+            <span class="badge ${w.is_active ? 'green' : 'gray'}">${w.is_active ? 'Active' : 'Disabled'}</span>
+            ${w.failure_count > 3 ? '<span class="badge red">Failing</span>' : ''}
+            <div style="font-size:13px;color:var(--gray-500);margin-top:4px"><code>${w.url}</code></div>
+            <div style="font-size:12px;color:var(--gray-400);margin-top:2px">Events: ${w.events.join(', ')} | Failures: ${w.failure_count}</div>
+          </div>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-sm" onclick="editWebhook('${w.id}')">Edit</button>
+            <button class="btn btn-sm" style="background:var(--danger);color:white" onclick="deleteWebhook('${w.id}')">Delete</button>
+          </div>
+        </div>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="toggleDeliveries('${w.id}')">Show Deliveries</button>
+        <div id="deliveries-${w.id}" style="display:none;margin-top:12px"></div>
+      </div>
+    `).join('');
+  } catch(e) { document.getElementById('webhookList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function toggleDeliveries(id) {
+  const el = document.getElementById('deliveries-' + id);
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  el.style.display = 'block'; el.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    const deliveries = await api('/webhooks/' + id + '/deliveries');
+    el.innerHTML = deliveries.length === 0 ? '<div class="empty-state">No deliveries yet.</div>' :
+      `<table><thead><tr><th>Time</th><th>Event</th><th>Status</th><th>Code</th></tr></thead><tbody>
+      ${deliveries.map(d => `<tr><td style="white-space:nowrap;font-size:12px">${formatDate(d.created_at)}</td><td style="font-size:13px">${d.event_type}</td><td><span class="badge ${d.status === 'success' ? 'green' : 'red'}">${d.status}</span></td><td>${d.response_code || '—'}</td></tr>`).join('')}
+    </tbody></table>`;
+  } catch(e) { el.innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+function showCreate() {
+  document.getElementById('whModalTitle').textContent = 'New Webhook';
+  document.getElementById('whName').value = '';
+  document.getElementById('whUrl').value = '';
+  document.getElementById('whSecret').value = '';
+  document.getElementById('whEditId').value = '';
+  document.querySelectorAll('.wh-ev').forEach(c => c.checked = false);
+  document.getElementById('evtAll').checked = false;
+  document.getElementById('whModal').classList.add('active');
+}
+
+function closeModal() { document.getElementById('whModal').classList.remove('active'); }
+
+async function saveWebhook() {
+  const id = document.getElementById('whEditId').value;
+  const name = document.getElementById('whName').value;
+  const url = document.getElementById('whUrl').value;
+  const secret = document.getElementById('whSecret').value;
+  let events = [];
+  if (document.getElementById('evtAll').checked) { events = ['*']; }
+  else { document.querySelectorAll('.wh-ev:checked').forEach(c => events.push(c.value)); }
+  const body = { name, url, events };
+  if (secret) body.secret = secret;
+  try {
+    if (id) await api('/webhooks/' + id, { method: 'PUT', body });
+    else await api('/webhooks', { method: 'POST', body });
+    closeModal(); loadWebhooks();
+  } catch(e) { alert(e.message); }
+}
+
+function editWebhook(id) { alert('Edit via PATCH not implemented in this view. Delete and recreate.'); }
+
+async function deleteWebhook(id) {
+  if (!confirm('Delete this webhook?')) return;
+  try { await api('/webhooks/' + id, { method: 'DELETE' }); loadWebhooks(); }
+  catch(e) { alert(e.message); }
+}
+
+document.getElementById('evtAll').addEventListener('change', function() {
+  document.querySelectorAll('.wh-ev').forEach(c => c.checked = this.checked);
+});
+</script>
+</body>
+</html>

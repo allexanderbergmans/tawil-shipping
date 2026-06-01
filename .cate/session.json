@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "workspaceId": "e0d3506f-7792-4e08-9dcf-8199d770a8ef",
+  "focusedNodeId": null,
+  "nodes": {
+    "92ebfdad-3028-4c7d-ab75-9b105a212fca": {
+      "panelId": "92ebfdad-3028-4c7d-ab75-9b105a212fca",
+      "zOrder": 0,
+      "creationIndex": 0,
+      "ptyId": "terminal-1780315408593-2cl634f"
+    },
+    "c3cb0dc7-89ea-401c-906e-1a11482c8ff3": {
+      "panelId": "c3cb0dc7-89ea-401c-906e-1a11482c8ff3",
+      "zOrder": 1,
+      "creationIndex": 1
+    },
+    "7ef7840d-d577-494b-b0d5-bae58f5f6bfd": {
+      "panelId": "7ef7840d-d577-494b-b0d5-bae58f5f6bfd",
+      "zOrder": 2,
+      "creationIndex": 2
+    },
+    "2c501bf6-18eb-46bc-aea2-16aa88db704a": {
+      "panelId": "2c501bf6-18eb-46bc-aea2-16aa88db704a",
+      "zOrder": 3,
+      "creationIndex": 3,
+      "ptyId": "terminal-1780316432729-fc0sbas"
+    }
+  }
+}

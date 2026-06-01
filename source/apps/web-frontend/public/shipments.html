@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipments — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html" class="active">Shipments</a>
+    <a href="/compliance.html">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Shipments</h2>
+    <div style="display:flex;gap:8px"><span class="ws-status disconnected">Offline</span><button class="btn btn-primary" onclick="showCreate()">+ New Shipment</button>
+      <button class="btn btn-sm" onclick="showBulkImport()">Bulk Import</button>
+      <a href="/api/export/shipments/csv" class="btn btn-sm" onclick="return requireAuth(event)" id="exportCsv">CSV</a>
+      <a href="/api/export/shipments/json" class="btn btn-sm" onclick="return requireAuth(event)" id="exportJson">JSON</a>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="form-group"><label>Status</label><select id="filterStatus" onchange="load()">
+      <option value="">All</option><option>pending</option><option>in_transit</option><option>cleared</option><option>delivered</option><option>delayed</option><option>exception</option>
+    </select></div>
+    <div class="form-group"><label>Origin</label><input id="filterOrigin" placeholder="Filter" oninput="load()"></div>
+    <div class="form-group"><label>Destination</label><input id="filterDestination" placeholder="Filter" oninput="load()"></div>
+    <div class="form-group" style="display:flex;align-items:end;margin-bottom:0">
+      <button class="btn btn-sm" onclick="clearFilters()">Clear</button>
+    </div>
+  </div>
+
+  <div class="card" id="createForm" style="display:none">
+    <div class="card-header">Create Shipment</div>
+    <form id="shipmentForm" onsubmit="createShipment(event)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group"><label>Origin</label><input name="origin" required></div>
+        <div class="form-group"><label>Destination</label><input name="destination" required></div>
+        <div class="form-group"><label>Cargo Description</label><input name="cargo_description"></div>
+        <div class="form-group"><label>Cargo Value ($)</label><input name="cargo_value" type="number"></div>
+        <div class="form-group"><label>Shipper Name</label><input name="shipper_name"></div>
+        <div class="form-group"><label>Shipper Country</label><input name="shipper_country"></div>
+        <div class="form-group"><label>Consignee Name</label><input name="consignee_name"></div>
+        <div class="form-group"><label>Consignee Country</label><input name="consignee_country"></div>
+        <div class="form-group"><label>Port of Loading</label><input name="port_of_loading"></div>
+        <div class="form-group"><label>Port of Discharge</label><input name="port_of_discharge"></div>
+        <div class="form-group"><label>Est. Departure</label><input name="estimated_departure" type="datetime-local"></div>
+        <div class="form-group"><label>Est. Arrival</label><input name="estimated_arrival" type="datetime-local"></div>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px"><button type="submit" class="btn btn-primary">Create</button>
+        <button type="button" class="btn" onclick="document.getElementById('createForm').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" id="bulkForm" style="display:none">
+    <div class="card-header">Bulk Import Shipments</div>
+    <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px">Paste JSON array of shipments. Each must have origin and destination.</p>
+    <textarea id="bulkData" rows="8" style="font-family:monospace;font-size:13px;width:100%;resize:vertical">[
+  {"origin":"Cairo","destination":"Alexandria","cargo_description":"Electronics"},
+  {"origin":"Port Said","destination":"Damietta","cargo_description":"Textiles"}
+]</textarea>
+    <div style="margin-top:8px;display:flex;gap:8px"><button class="btn btn-primary" onclick="bulkImport()">Import</button>
+      <button class="btn" onclick="document.getElementById('bulkForm').style.display='none'">Cancel</button>
+    </div>
+    <div id="bulkResult" style="margin-top:12px"></div>
+  </div>
+
+  <div id="shipmentsTable"><div class="loading">Loading...</div></div>
+  <div id="pagination" class="pagination" style="display:none"></div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+let _page = 1;
+const PAGE_SIZE = 15;
+
+APP.checkAuth().then(() => { APP.renderNav(); load(); });
+
+function requireAuth(e) { if (!APP.isLoggedIn()) { e.preventDefault(); alert('Sign in to export'); } }
+
+async function load(pg) {
+  if (pg !== undefined) _page = pg;
+  try {
+    const params = new URLSearchParams();
+    const st = document.getElementById('filterStatus').value;
+    const or = document.getElementById('filterOrigin').value;
+    const de = document.getElementById('filterDestination').value;
+    if (st) params.set('status', st); if (or) params.set('origin', or); if (de) params.set('destination', de);
+    params.set('limit', PAGE_SIZE);
+    params.set('offset', (_page - 1) * PAGE_SIZE);
+    const res = await api('/shipments?' + params.toString());
+    const list = res.data || [];
+    const total = res.total || 0;
+    const pages = res.pages || 1;
+
+    const tbody = document.getElementById('shipmentsTable');
+    if (list.length === 0) { tbody.innerHTML = '<div class="empty-state">No shipments.</div>'; document.getElementById('pagination').style.display = 'none'; return; }
+    tbody.innerHTML = `<table><thead><tr><th>Ref</th><th>Origin</th><th>Destination</th><th>Status</th><th>Value</th><th>Created</th><th></th></tr></thead><tbody>
+      ${list.map(s => `<tr><td>${s.reference}</td><td>${s.origin}</td><td>${s.destination}</td><td>${statusBadge(s.status)}</td><td>${formatCurrency(s.cargo_value)}</td><td style="white-space:nowrap">${formatDate(s.created_at)}</td><td><a href="/shipment.html?id=${s.id}" class="btn btn-sm btn-primary">View</a></td></tr>`).join('')}
+    </tbody></table>`;
+
+    const pgEl = document.getElementById('pagination');
+    pgEl.style.display = pages > 1 ? 'flex' : 'none';
+    let pgHtml = `<span class="pg-info">Page ${_page} of ${pages} (${total} total)</span><div class="pg-btns">`;
+    pgHtml += `<button class="btn btn-sm" onclick="load(1)" ${_page <= 1 ? 'disabled' : ''}>&laquo; First</button>`;
+    pgHtml += `<button class="btn btn-sm" onclick="load(${_page - 1})" ${_page <= 1 ? 'disabled' : ''}>&lsaquo; Prev</button>`;
+    for (let p = Math.max(1, _page - 2); p <= Math.min(pages, _page + 2); p++) {
+      pgHtml += `<button class="btn btn-sm ${p === _page ? 'btn-primary' : ''}" onclick="load(${p})">${p}</button>`;
+    }
+    pgHtml += `<button class="btn btn-sm" onclick="load(${_page + 1})" ${_page >= pages ? 'disabled' : ''}>Next &rsaquo;</button>`;
+    pgHtml += `<button class="btn btn-sm" onclick="load(${pages})" ${_page >= pages ? 'disabled' : ''}>Last &raquo;</button>`;
+    pgHtml += '</div>';
+    pgEl.innerHTML = pgHtml;
+  } catch(e) { document.getElementById('shipmentsTable').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+function clearFilters() {
+  document.getElementById('filterStatus').value = '';
+  document.getElementById('filterOrigin').value = '';
+  document.getElementById('filterDestination').value = '';
+  load();
+}
+
+function showCreate() { document.getElementById('createForm').style.display = 'block'; document.getElementById('shipmentForm').reset(); }
+function showBulkImport() { document.getElementById('bulkForm').style.display = 'block'; document.getElementById('bulkResult').innerHTML = ''; }
+
+async function createShipment(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = Object.fromEntries(fd.entries());
+  Object.keys(data).forEach(k => { if (data[k] === '') delete data[k]; });
+  try { await api('/shipments', { method: 'POST', body: data }); e.target.reset(); document.getElementById('createForm').style.display = 'none'; load(); }
+  catch(err) { alert(err.message); }
+}
+
+async function bulkImport() {
+  try {
+    const data = JSON.parse(document.getElementById('bulkData').value);
+    if (!Array.isArray(data)) throw new Error('Must be a JSON array');
+    const result = await api('/bulk/shipments', { method: 'POST', body: { shipments: data } });
+    document.getElementById('bulkResult').innerHTML = `
+      <div style="color:var(--success)">Created: ${result.created.length}</div>
+      ${result.errors.length ? `<div style="color:var(--danger)">Errors: ${result.errors.length}</div>` : ''}
+    `;
+    load();
+  } catch(e) { document.getElementById('bulkResult').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "name": "C:\\Users\\AllexanderBergmans\\Desktop\\a",
+  "color": "",
+  "canvas": {
+    "nodes": [
+      {
+        "panelId": "c2a328ae-b665-4459-9afd-337339048dc6",
+        "panelType": "terminal",
+        "title": "C:\\WINDOWS\\system32\\cmd.exe",
+        "origin": {
+          "x": 100,
+          "y": 100
+        },
+        "size": {
+          "width": 640,
+          "height": 400
+        }
+      },
+      {
+        "panelId": "2d78aa0d-60c8-4515-ac12-f9ab4ae1dd05",
+        "panelType": "editor",
+        "title": "C:\\Users\\AllexanderBergmans\\Desktop\\a\\source\\apps\\cli\\commands\\documents.js",
+        "origin": {
+          "x": 860,
+          "y": 340
+        },
+        "size": {
+          "width": 917,
+          "height": 500
+        },
+        "filePath": "source/apps/cli/commands/documents.js"
+      }
+    ],
+    "regions": [],
+    "zoomLevel": 0.6939182296874998,
+    "viewportOffset": {
+      "x": -205.10636556150928,
+      "y": -24.755151671741487
+    }
+  },
+  "dockState": {
+    "zones": {
+      "left": {
+        "position": "left",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "right": {
+        "position": "right",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "bottom": {
+        "position": "bottom",
+        "visible": false,
+        "size": 240,
+        "layout": null
+      },
+      "center": {
+        "position": "center",
+        "visible": true,
+        "size": 0,
+        "layout": {
+          "type": "tabs",
+          "id": "80b64328-f84b-4027-989c-a73fea6540a2",
+          "panelIds": [
+            "30294579-e951-41c5-90ca-a1e53825d691",
+            "2105b7ea-df3a-44ae-a922-22a3a82176ff"
+          ],
+          "activeIndex": 0
+        }
+      }
+    },
+    "locations": {
+      "30294579-e951-41c5-90ca-a1e53825d691": {
+        "type": "dock",
+        "zone": "center",
+        "stackId": "80b64328-f84b-4027-989c-a73fea6540a2"
+      },
+      "2105b7ea-df3a-44ae-a922-22a3a82176ff": {
+        "type": "dock",
+        "zone": "center",
+        "stackId": "80b64328-f84b-4027-989c-a73fea6540a2"
+      }
+    }
+  },
+  "dockPanels": {
+    "30294579-e951-41c5-90ca-a1e53825d691": {
+      "type": "canvas",
+      "title": "Canvas"
+    },
+    "2105b7ea-df3a-44ae-a922-22a3a82176ff": {
+      "type": "editor",
+      "title": "C:\\Users\\AllexanderBergmans\\Desktop\\a\\source\\index.js",
+      "filePath": "source/index.js"
+    }
+  }
+}

@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compliance — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/shipments.html">Shipments</a>
+    <a href="/compliance.html" class="active">Compliance</a>
+    <a href="/documents.html">Documents</a>
+    <a href="/notifications.html">Notifications</a>
+    <a href="/network.html">Network</a>
+  <a href="/audit.html">Audit Log</a></nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Compliance</h2>
+    <button class="btn btn-primary btn-sm" id="addRuleBtn" style="display:none" onclick="showRuleModal()">+ Add Rule</button>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('rules',this)">Rules</div>
+    <div class="tab" onclick="switchTab('checker',this)">Check Shipment</div>
+    <div class="tab" onclick="switchTab('approvals',this)">Approvals</div>
+  </div>
+
+  <div id="tab-rules" class="tab-content active">
+    <div class="card">
+      <div class="filter-bar">
+        <div class="form-group"><label>Type</label><select id="filterType" onchange="loadRules()"><option value="">All</option><option>sanctions</option><option>embargo</option><option>customs</option><option>restricted_party</option></select></div>
+        <div class="form-group" style="display:flex;align-items:center;gap:4px;margin-bottom:0">
+          <label class="toggle"><input type="checkbox" id="activeOnly" onchange="loadRules()"><span class="slider"></span></label>
+          <span style="font-size:13px;color:var(--gray-500)">Active only</span>
+        </div>
+      </div>
+      <div id="rulesList"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div id="tab-checker" class="tab-content">
+    <div class="card">
+      <div class="card-header">Run Compliance Check</div>
+      <div class="inline-form">
+        <div class="form-group"><label>Shipment ID</label><input id="checkShipmentId" placeholder="shp_..."></div>
+        <button class="btn btn-primary" onclick="runComplianceCheck()">Check</button>
+      </div>
+      <div id="checkResult" style="margin-top:16px"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Check Results by Shipment</div>
+      <div class="form-group"><label>Shipment ID</label><input id="resultsShipmentId" placeholder="shp_..."></div>
+      <button class="btn btn-sm" onclick="loadResults()">View Results</button>
+      <div id="resultsList" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <div id="tab-approvals" class="tab-content">
+    <div class="card">
+      <div class="card-header">Pending Approvals</div>
+      <div class="inline-form">
+        <div class="form-group"><label>Shipment ID</label><input id="approveShipmentId" placeholder="shp_..."></div>
+        <div class="form-group"><label>Status</label><select id="approveStatus"><option value="approved">Approve</option><option value="rejected">Reject</option></select></div>
+        <button class="btn btn-primary" onclick="approveShipment()">Submit</button>
+      </div>
+      <div id="approveResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ruleModal">
+  <div class="modal">
+    <h3 id="ruleModalTitle">Add Compliance Rule</h3>
+    <div class="form-group"><label>Type</label><select id="ruleType"><option>sanctions</option><option>embargo</option><option>customs</option><option>restricted_party</option></select></div>
+    <div class="form-group"><label>Country</label><input id="ruleCountry" placeholder="Two-letter country code (e.g. IR, KP)"></div>
+    <div class="form-group"><label>Pattern</label><input id="rulePattern" placeholder="e.g. dual.use"></div>
+    <div class="form-group"><label>Min Value</label><input id="ruleMinValue" type="number" placeholder="e.g. 50000"></div>
+    <div class="form-group"><label>Max Value</label><input id="ruleMaxValue" type="number" placeholder="e.g. 10000"></div>
+    <div class="form-group"><label>Action</label><select id="ruleAction"><option value="block">Block</option><option value="flag">Flag</option><option value="warn">Warn</option></select></div>
+    <div class="form-group"><label>Description</label><input id="ruleDescription" required></div>
+    <input id="ruleEditId" type="hidden">
+    <div class="modal-actions">
+      <button class="btn" onclick="closeRuleModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRule()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => {
+  APP.renderNav();
+  if (APP.isAdmin()) document.getElementById('addRuleBtn').style.display = '';
+  loadRules();
+});
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+async function loadRules() {
+  try {
+    const type = document.getElementById('filterType').value;
+    const active = document.getElementById('activeOnly').checked;
+    const params = new URLSearchParams();
+    if (type) params.set('type', type);
+    if (active) params.set('active', 'true');
+    const q = params.toString() ? '?' + params : '';
+    const rules = await api('/compliance/rules' + q);
+    document.getElementById('rulesList').innerHTML = `<table><thead><tr><th>Type</th><th>Country</th><th>Action</th><th>Description</th><th>Active</th>${APP.isAdmin() ? '<th></th>' : ''}</tr></thead><tbody>
+      ${rules.map(r => `<tr>
+        <td><span class="badge blue">${r.type}</span></td>
+        <td>${r.country || '<span style="color:var(--gray-400)">—</span>'}</td>
+        <td><span class="badge ${r.action === 'block' ? 'red' : r.action === 'flag' ? 'yellow' : 'gray'}">${r.action}</span></td>
+        <td style="font-size:13px">${r.description}</td>
+        <td>${r.is_active ? '✓' : '✗'}</td>
+        ${APP.isAdmin() ? `<td><button class="btn btn-sm" onclick="deleteRule('${r.id}')">Delete</button></td>` : ''}
+      </tr>`).join('')}
+    </tbody></table>`;
+  } catch(e) { document.getElementById('rulesList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+function showRuleModal() {
+  document.getElementById('ruleModalTitle').textContent = 'Add Rule';
+  document.getElementById('ruleEditId').value = '';
+  ['ruleType','ruleCountry','rulePattern','ruleMinValue','ruleMaxValue','ruleAction','ruleDescription'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { if (el.type === 'select-one') el.selectedIndex = 0; else el.value = ''; }
+  });
+  document.getElementById('ruleModal').classList.add('active');
+}
+
+function closeRuleModal() { document.getElementById('ruleModal').classList.remove('active'); }
+
+async function saveRule() {
+  const body = {
+    type: document.getElementById('ruleType').value,
+    country: document.getElementById('ruleCountry').value || undefined,
+    pattern: document.getElementById('rulePattern').value || undefined,
+    min_value: document.getElementById('ruleMinValue').value ? parseFloat(document.getElementById('ruleMinValue').value) : undefined,
+    max_value: document.getElementById('ruleMaxValue').value ? parseFloat(document.getElementById('ruleMaxValue').value) : undefined,
+    action: document.getElementById('ruleAction').value,
+    description: document.getElementById('ruleDescription').value,
+  };
+  try { await api('/compliance/rules', { method: 'POST', body }); closeRuleModal(); loadRules(); }
+  catch(e) { alert(e.message); }
+}
+
+async function deleteRule(id) {
+  if (!confirm('Delete this rule?')) return;
+  try { await api('/compliance/rules/' + id, { method: 'DELETE' }); loadRules(); }
+  catch(e) { alert(e.message); }
+}
+
+async function runComplianceCheck() {
+  const id = document.getElementById('checkShipmentId').value;
+  if (!id) return;
+  try {
+    const result = await api('/compliance/check/' + id, { method: 'POST' });
+    document.getElementById('checkResult').innerHTML = `
+      <div style="padding:12px;border-radius:6px;background:${result.passed ? '#def7ec' : '#fde8e8'}">
+        <strong>${result.passed ? 'All checks passed' : 'Some checks failed'}</strong><br>
+        Passed: ✓ | Flags: ${result.flags.length} | Failures: ${result.failures.length}
+      </div>`;
+  } catch(e) { document.getElementById('checkResult').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function loadResults() {
+  const id = document.getElementById('resultsShipmentId').value;
+  if (!id) return;
+  try {
+    const results = await api('/compliance/results/' + id);
+    if (results.length === 0) { document.getElementById('resultsList').innerHTML = '<div class="empty-state">No results.</div>'; return; }
+    document.getElementById('resultsList').innerHTML = results.map(r =>
+      `<div style="padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
+        <span class="badge ${r.result === 'pass' ? 'green' : r.result === 'flag' ? 'yellow' : 'red'}">${r.result}</span>
+        <span style="margin-left:8px">${r.rule_description || r.rule_type}</span>
+        <span style="color:var(--gray-400);margin-left:8px;font-size:12px">${formatDate(r.checked_at)}</span>
+      </div>`
+    ).join('');
+  } catch(e) { document.getElementById('resultsList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function approveShipment() {
+  const id = document.getElementById('approveShipmentId').value;
+  const status = document.getElementById('approveStatus').value;
+  if (!id) return;
+  try {
+    await api('/compliance/approve/' + id, { method: 'POST', body: { status } });
+    document.getElementById('approveResult').innerHTML = `<div style="color:var(--success)">Shipment ${status}.</div>`;
+  } catch(e) { document.getElementById('approveResult').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+</script>
+</body>
+</html>

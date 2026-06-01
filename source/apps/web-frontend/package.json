@@ -1,0 +1,7 @@
+{
+  "name": "@global-logistics/web-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web frontend dashboard for the Global Logistics & Supply Chain Mesh",
+  "main": "index.js"
+}

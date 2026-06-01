@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "name": "C:\\Users\\AllexanderBergmans\\Desktop\\a",
+  "color": "#4a8ad0",
+  "canvas": {
+    "nodes": [
+      {
+        "panelId": "92ebfdad-3028-4c7d-ab75-9b105a212fca",
+        "panelType": "terminal",
+        "title": "npm run peers",
+        "origin": {
+          "x": 40,
+          "y": 15
+        },
+        "size": {
+          "width": 877,
+          "height": 509
+        }
+      },
+      {
+        "panelId": "c3cb0dc7-89ea-401c-906e-1a11482c8ff3",
+        "panelType": "browser",
+        "title": "http://localhost:4002/api/health",
+        "origin": {
+          "x": 69,
+          "y": 557
+        },
+        "size": {
+          "width": 800,
+          "height": 600
+        },
+        "url": "http://localhost:4002/api/health"
+      },
+      {
+        "panelId": "7ef7840d-d577-494b-b0d5-bae58f5f6bfd",
+        "panelType": "editor",
+        "title": "C:\\Users\\AllexanderBergmans\\Desktop\\a\\node_modules\\express\\lib\\router\\index.js",
+        "origin": {
+          "x": 37.64705882352945,
+          "y": -555.2941176470588
+        },
+        "size": {
+          "width": 600,
+          "height": 500
+        },
+        "filePath": "node_modules/express/lib/router/index.js"
+      },
+      {
+        "panelId": "2c501bf6-18eb-46bc-aea2-16aa88db704a",
+        "panelType": "terminal",
+        "title": "C:\\WINDOWS\\system32\\cmd.exe",
+        "origin": {
+          "x": 40,
+          "y": -1000
+        },
+        "size": {
+          "width": 640,
+          "height": 400
+        }
+      }
+    ],
+    "regions": [],
+    "zoomLevel": 0.7939062554687496,
+    "viewportOffset": {
+      "x": 330.26916918933193,
+      "y": 45.50400238566158
+    }
+  },
+  "dockState": {
+    "zones": {
+      "left": {
+        "position": "left",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "right": {
+        "position": "right",
+        "visible": false,
+        "size": 260,
+        "layout": null
+      },
+      "bottom": {
+        "position": "bottom",
+        "visible": false,
+        "size": 240,
+        "layout": null
+      },
+      "center": {
+        "position": "center",
+        "visible": true,
+        "size": 0,
+        "layout": {
+          "type": "tabs",
+          "id": "c812d4b9-87d6-4303-9c68-5d0b3ad7c08d",
+          "panelIds": [
+            "ef23edd4-c92e-4919-9abf-2feaa9cee607"
+          ],
+          "activeIndex": 0
+        }
+      }
+    },
+    "locations": {
+      "ef23edd4-c92e-4919-9abf-2feaa9cee607": {
+        "type": "dock",
+        "zone": "center",
+        "stackId": "c812d4b9-87d6-4303-9c68-5d0b3ad7c08d"
+      }
+    }
+  },
+  "dockPanels": {
+    "ef23edd4-c92e-4919-9abf-2feaa9cee607": {
+      "type": "canvas",
+      "title": "Canvas"
+    }
+  }
+}
