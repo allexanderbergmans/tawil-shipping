@@ -76,6 +76,11 @@ const APP = {
       wrap.className = "dark-toggle-wrap";
       wrap.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 12px;margin-top:4px;border-top:1px solid var(--gray-700);font-size:13px;color:var(--gray-400)";
       wrap.innerHTML = '<span style="flex:1">Dark mode</span><label class="toggle"><input type="checkbox" id="darkModeToggle"><span class="slider"></span></label>';
+      const accBtn = document.createElement("button");
+      accBtn.textContent = "🎨 Theme";
+      accBtn.style.cssText = "background:none;border:none;color:var(--gray-400);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:4px;font-family:inherit";
+      accBtn.addEventListener("click", () => APP.showAccentPicker());
+      wrap.appendChild(accBtn);
       // Insert before logout if it exists, otherwise append
       const logout = nav.querySelector(".logout-link");
       if (logout) nav.insertBefore(wrap, logout);
@@ -757,6 +762,79 @@ const APP = {
       });
     });
   },
+
+  /* ── Accent color picker ── */
+  get accentColor() { return localStorage.getItem("accentColor") || "#2563eb"; },
+  set accentColor(c) {
+    localStorage.setItem("accentColor", c);
+    document.documentElement.style.setProperty("--primary", c);
+  },
+  showAccentPicker() {
+    const colors = ["#2563eb","#059669","#dc2626","#7c3aed","#d97706","#0891b2","#be185d","#1f2937"];
+    const cur = this.accentColor;
+    const html = '<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:12px">' +
+      colors.map(c => '<div style="width:40px;height:40px;border-radius:8px;background:' + c + ';cursor:pointer;border:' + (c === cur ? '3px solid var(--gray-900)' : '3px solid transparent') + '" data-color="' + c + '" onclick="APP.setAccent(\'' + c + '\')"></div>').join('') +
+      '<div style="flex:0 0 100%;text-align:center;margin-top:8px"><label style="font-size:12px;color:var(--gray-400)">Custom: <input type="color" id="accentPicker" value="' + cur + '" onchange="APP.setAccent(this.value)" style="width:60px;height:40px;border:none;cursor:pointer;background:none"></label></div></div>';
+    APP.openModal({ title: "Accent Color", content: html, size: "small" });
+  },
+  setAccent(c) {
+    this.accentColor = c;
+    document.querySelectorAll("[data-color]").forEach(el => el.style.border = (el.dataset.color === c ? '3px solid var(--gray-900)' : '3px solid transparent'));
+  },
+
+  /* ── Shipment notes (localStorage) ── */
+  getShipmentNotes(id) { try { const n = JSON.parse(localStorage.getItem("shipNotes") || "{}"); return n[id] || ""; } catch { return ""; } },
+  setShipmentNotes(id, text) {
+    try { const n = JSON.parse(localStorage.getItem("shipNotes") || "{}"); n[id] = text; localStorage.setItem("shipNotes", JSON.stringify(n)); } catch {}
+  },
+
+  /* ── Data quality score ── */
+  dataQuality(s) {
+    if (!s) return { score: 0, total: 0, filled: 0 };
+    const fields = ["reference","origin","destination","cargo_value","shipper_name","consignee_name","cargo_description","weight_kg","port_of_loading","port_of_discharge"];
+    const filled = fields.filter(f => s[f] != null && s[f] !== "").length;
+    return { score: Math.round(filled / fields.length * 100), total: fields.length, filled };
+  },
+
+  /* ── Simple delay-risk heuristic ── */
+  delayRisk(from, to) {
+    const riskLanes = [
+      { from: "ningbo", to: "rotterdam", risk: "high" },
+      { from: "shanghai", to: "hamburg", risk: "high" },
+      { from: "singapore", to: "los angeles", risk: "medium" },
+      { from: "rotterdam", to: "new york", risk: "medium" },
+      { from: "dubai", to: "mombasa", risk: "high" },
+    ];
+    const f = (from || "").toLowerCase(), t = (to || "").toLowerCase();
+    const match = riskLanes.find(r => f.includes(r.from) && t.includes(r.to));
+    return match ? match.risk : "low";
+  },
+
+  /* ── Gantt-style timeline ── */
+  renderGantt(containerId, events) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el || !events.length) return;
+    const times = events.map(e => new Date(e.timestamp).getTime()).filter(t => !isNaN(t));
+    if (times.length === 0) { el.innerHTML = '<div class="text-muted">No timed events</div>'; return; }
+    const minT = Math.min(...times), maxT = Math.max(...times), span = maxT - minT || 1;
+    const statusColors = { pending: "#f59e0b", in_transit: "#3b82f6", delivered: "#10b981", delayed: "#ef4444", customs_hold: "#8b5cf6", cleared: "#059669", exception: "#dc2626", approved: "#10b981" };
+    let html = '<div style="position:relative;padding:4px 0;min-height:40px;overflow-x:auto">';
+    events.forEach(e => {
+      const t = new Date(e.timestamp).getTime();
+      if (isNaN(t)) return;
+      const pct = ((t - minT) / span) * 100;
+      const color = statusColors[e.status] || "#6b7280";
+      html += '<div style="position:relative;margin:2px 0;padding:2px 0;font-size:11px;white-space:nowrap">';
+      html += '<span style="position:absolute;left:' + pct + '%;width:10px;height:10px;border-radius:50%;background:' + color + ';top:50%;transform:translate(-50%,-50%);z-index:2"></span>';
+      html += '<span style="margin-left:' + (pct + 2) + '%;color:var(--gray-600)">' + (e.status || "").replace(/_/g, " ") + ' — ' + new Date(e.timestamp).toLocaleString() + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  },
+
+  /* ── Pulse animation helper (network health) ── */
+  pulse(el) { el.classList.add("pulsing"); setTimeout(() => el.classList.remove("pulsing"), 1500); },
 };
 
 APP.init();

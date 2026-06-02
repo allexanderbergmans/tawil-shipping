@@ -98,7 +98,17 @@
     <div id="bulkResult" style="margin-top:12px"></div>
   </div>
 
-  <div id="bulkBar" class="bulk-bar"><span class="count" id="bulkCount">0</span> selected <span class="spacer"></span><button class="btn btn-sm" onclick="bulkExport()">Export selected</button></div>
+  <div id="bulkBar" class="bulk-bar"><span class="count" id="bulkCount">0</span> selected <span class="spacer"></span>
+    <select id="bulkStatusSelect" style="font-size:12px;padding:2px 6px;width:auto">
+      <option value="">Bulk status…</option>
+      <option value="in_transit">In Transit</option>
+      <option value="delayed">Delayed</option>
+      <option value="cleared">Cleared</option>
+      <option value="delivered">Delivered</option>
+      <option value="exception">Exception</option>
+    </select>
+    <button class="btn btn-sm" onclick="bulkUpdateStatus()">Update</button>
+    <button class="btn btn-sm" onclick="bulkExport()">Export selected</button></div>
 
   <div id="shipmentsTable"><div class="loading">Loading...</div></div>
   <div id="pagination" class="pagination" style="display:none"></div>
@@ -200,8 +210,13 @@ async function load(pg, sortCol, sortDir) {
     const tbody = document.getElementById('shipmentsTable');
     if (_list.length === 0) { tbody.innerHTML = '<div class="empty-state">No shipments.</div>'; document.getElementById('pagination').style.display = 'none'; return; }
     const allChecked = _list.length > 0 && _list.every(s => _selected.has(s.id));
-    tbody.innerHTML = `<table id="shipmentsTableInner"><thead><tr><th style="width:32px"><input type="checkbox" onchange="toggleSelectAll(this)" ${allChecked ? 'checked' : ''}></th><th>★</th><th>Ref</th><th>Origin</th><th>Destination</th><th>Status</th><th>Value</th><th>Risk</th><th>Created</th><th></th></tr></thead><tbody>
-      ${_list.map(s => `<tr class="has-tooltip" data-id="${s.id}" style="${_selected.has(s.id) ? 'background:var(--primary-light)' : ''}"><td><input type="checkbox" onchange="toggleSelect('${s.id}', this)" ${_selected.has(s.id) ? 'checked' : ''}></td><td><span class="fav-star ${APP.isFavorite(s.id) ? 'active' : ''}" onclick="APP.toggleFavorite('${s.id}');this.classList.toggle('active')">★</span></td><td><span class="copy-ref" onclick="APP.copyRef('${s.reference}')" title="Click to copy reference">${s.reference}</span></td><td>${s.origin}</td><td>${s.destination}</td><td>${statusBadge(s.status)}</td><td>${formatCurrency(s.cargo_value)}</td><td>${s.risk_score != null ? APP.riskBadge(s.risk_score) : '—'}</td><td style="white-space:nowrap">${formatDate(s.created_at)}</td><td><a data-search="true" href="/shipment.html?id=${s.id}" class="btn btn-sm btn-primary">View</a></td><div class="ship-tooltip"><b>${s.reference}</b><br>${s.origin} → ${s.destination}<br>Value: ${formatCurrency(s.cargo_value)}${s.weight_kg ? ' | Weight: ' + formatNum(s.weight_kg) + ' kg' : ''}${s.shipper_name ? '<br>Shipper: ' + s.shipper_name : ''}${s.consignee_name ? '<br>Consignee: ' + s.consignee_name : ''}</div></tr>`).join('')}
+    tbody.innerHTML = `<table id="shipmentsTableInner"><thead><tr><th style="width:32px"><input type="checkbox" onchange="toggleSelectAll(this)" ${allChecked ? 'checked' : ''}></th><th>★</th><th>Ref</th><th>Origin</th><th>Destination</th><th>Status</th><th>Value</th><th>DQ</th><th>Risk</th><th>Delay</th><th>Created</th><th></th></tr></thead><tbody>
+      ${_list.map(s => {
+        const dq = APP.dataQuality(s);
+        const dqClass = dq.score >= 80 ? 'good' : dq.score >= 50 ? 'ok' : 'poor';
+        const dr = APP.delayRisk(s.origin, s.destination);
+        return `<tr class="has-tooltip" data-id="${s.id}" style="${_selected.has(s.id) ? 'background:var(--primary-light)' : ''}"><td><input type="checkbox" onchange="toggleSelect('${s.id}', this)" ${_selected.has(s.id) ? 'checked' : ''}></td><td><span class="fav-star ${APP.isFavorite(s.id) ? 'active' : ''}" onclick="APP.toggleFavorite('${s.id}');this.classList.toggle('active')">★</span></td><td><span class="copy-ref" onclick="APP.copyRef('${s.reference}')" title="Click to copy reference">${s.reference}</span></td><td>${s.origin}</td><td>${s.destination}</td><td>${statusBadge(s.status)}</td><td>${formatCurrency(s.cargo_value)}</td><td><span class="dq-badge ${dqClass}" title="${dq.filled}/${dq.total} fields filled">${dq.score}</span></td><td>${s.risk_score != null ? APP.riskBadge(s.risk_score) : '—'}</td><td><span class="delay-badge ${dr}">${dr}</span></td><td style="white-space:nowrap">${formatDate(s.created_at)}</td><td><a data-search="true" href="/shipment.html?id=${s.id}" class="btn btn-sm btn-primary">View</a></td><div class="ship-tooltip"><b>${s.reference}</b><br>${s.origin} → ${s.destination}<br>Value: ${formatCurrency(s.cargo_value)}${s.weight_kg ? ' | Weight: ' + formatNum(s.weight_kg) + ' kg' : ''}${s.shipper_name ? '<br>Shipper: ' + s.shipper_name : ''}${s.consignee_name ? '<br>Consignee: ' + s.consignee_name : ''}</div></tr>`;
+      }).join('')}
     </tbody></table>`;
     APP.makeSortable(document.getElementById('shipmentsTableInner'), (col, dir) => load(1, col, dir));
     APP.makeRowsExpandable(document.getElementById('shipmentsTableInner'), (tr) => {
@@ -236,6 +251,19 @@ function bulkExport() {
     window.open(url, "_blank");
     APP.toast("Export started", ids.length + " shipments", "success");
   });
+}
+
+async function bulkUpdateStatus() {
+  const status = document.getElementById('bulkStatusSelect').value;
+  if (!status) { APP.toast("Select a status", "", "warning"); return; }
+  const ids = Array.from(_selected);
+  if (ids.length === 0) { APP.toast("No shipments selected", "", "warning"); return; }
+  try {
+    await Promise.all(ids.map(id => api('/shipments/' + id, { method: 'PATCH', body: { status } })));
+    APP.toast("Bulk update done", ids.length + " shipments → " + status, "success");
+    _selected.clear();
+    load();
+  } catch(e) { APP.toast("Bulk update failed", e.message, "error"); }
 }
 
 function clearFilters() {

@@ -697,3 +697,36 @@ body.dark .copy-ref { border-bottom-color: var(--gray-500); }
   .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   th, td { font-size: 12px; padding: 8px; }
 }
+
+/* ── Pulse animation ── */
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.pulsing { animation: pulse 0.8s ease-in-out 2; }
+
+/* ── Data quality badge ── */
+.dq-badge { display: inline-block; width: 28px; height: 28px; line-height: 28px; border-radius: 50%; text-align: center; font-size: 10px; font-weight: 700; color: white; }
+.dq-badge.good { background: var(--success); }
+.dq-badge.ok { background: var(--warning); }
+.dq-badge.poor { background: var(--danger); }
+
+/* ── Accent picker modal ── */
+.accent-swatch { transition: transform 0.15s; }
+.accent-swatch:hover { transform: scale(1.15); }
+
+/* ── Delay risk label ── */
+.delay-badge { font-size: 10px; padding: 1px 6px; border-radius: 99px; display: inline-block; }
+.delay-badge.low { background: #def7ec; color: #03543f; }
+.delay-badge.medium { background: #fef3c7; color: #92400e; }
+.delay-badge.high { background: #fde8e8; color: #991b1b; }
+body.dark .delay-badge.low { background: #064e3b; color: #6ee7b7; }
+body.dark .delay-badge.medium { background: #78350f; color: #fcd34d; }
+body.dark .delay-badge.high { background: #7f1d1d; color: #fca5a5; }
+
+/* ── Notes textarea ── */
+.notes-area { width:100%; min-height:60px; font-size:13px; border:1px solid var(--gray-200); border-radius:var(--radius); padding:8px; resize:vertical; font-family:inherit; background:white; }
+body.dark .notes-area { background:var(--gray-50); color:white; }
+
+/* ── Gantt bar connector ── */
+.gantt-track { position:relative; }
+.gantt-dot { position:absolute; width:10px; height:10px; border-radius:50%; transform:translate(-50%,-50%); z-index:2; }
+.gantt-line { position:absolute; height:2px; background:var(--gray-200); top:50%; z-index:1; }
+body.dark .gantt-line { background:var(--gray-500); }

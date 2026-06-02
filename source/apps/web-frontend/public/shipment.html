@@ -59,12 +59,16 @@ async function load() {
   try {
     const s = await api('/shipments/' + id);
     _shipment = s;
-    document.getElementById('shipmentTitle').textContent = 'Shipment ' + s.reference;
+    document.getElementById('shipmentTitle').innerHTML = 'Shipment ' + s.reference + ' <span class="fav-star ' + (APP.isFavorite(id) ? 'active' : '') + '" onclick="APP.toggleFavorite(\'' + id + '\');this.classList.toggle(\'active\')" style="font-size:18px;vertical-align:middle">★</span>';
     document.getElementById('shipmentContent').innerHTML = `
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
         <div>
           <div class="card">
             <div class="card-header">Shipment Info <button class="btn btn-sm" onclick="toggleShipmentEdit()" id="editToggleBtn">✏️ Edit</button></div>
+            <div style="display:flex;gap:12px;padding:4px 16px 0;font-size:12px;color:var(--gray-500)">
+              <span>Data Quality: ${(function(){ const d=APP.dataQuality(s); return '<span class="dq-badge '+(d.score>=80?'good':d.score>=50?'ok':'poor')+'" style="width:20px;height:20px;line-height:20px;font-size:8px;display:inline-block">'+d.score+'</span>'; })()}</span>
+              <span>Delay Risk: <span class="delay-badge ${APP.delayRisk(s.origin, s.destination)}">${APP.delayRisk(s.origin, s.destination)}</span></span>
+            </div>
             <div id="shipmentFields">
             ${[
               ['Status', 'status', statusBadge(s.status)],
@@ -85,6 +89,9 @@ async function load() {
           <div class="card">
             <div class="card-header">Tracking Timeline</div>
             <div id="timeline"><div class="loading">Loading...</div></div>
+            <div id="timelineGantt" style="margin-top:8px;padding:8px;background:var(--gray-50);border-radius:var(--radius)"></div>
+            <div class="card-header" style="margin-top:12px">Notes</div>
+            <div><textarea id="shipNotes" class="notes-area" placeholder="Add notes about this shipment..." onchange="APP.setShipmentNotes(id, this.value)"></textarea></div>
           </div>
         </div>
         <div>
@@ -129,6 +136,7 @@ async function load() {
       </div>
     `;
     loadTimeline(); loadCompliance(); loadDocuments(); loadRisk(); loadCarbon(); loadChain(); loadSLA(); loadTelemetry();
+    document.getElementById('shipNotes').value = APP.getShipmentNotes(id);
   } catch(e) { document.getElementById('shipmentContent').innerHTML = `<div class="error">${e.message}</div>`; }
 }
 
@@ -141,6 +149,7 @@ async function loadTimeline() {
       <div class="title">${statusBadge(e.status)} ${e.location ? 'at ' + e.location : ''}</div>
       <div class="desc">${e.description || ''}</div></div>`
     ).join('') + '</div>';
+    APP.renderGantt('timelineGantt', ev);
   } catch(e) { document.getElementById('timeline').innerHTML = `<div class="error">${e.message}</div>`; }
 }
 
