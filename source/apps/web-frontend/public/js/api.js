@@ -8,7 +8,7 @@ async function api(path, options = {}) {
   const token = (app && app.token) || localStorage.getItem("glm_token");
   if (token) headers["Authorization"] = "Bearer " + token;
 
-  const timeout = options.timeout || 15000;
+  const timeout = options.timeout || 8000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 

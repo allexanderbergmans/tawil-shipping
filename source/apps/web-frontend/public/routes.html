@@ -42,7 +42,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 APP.checkAuth().then(() => { APP.renderNav(); loadLanes(); });
 
@@ -58,7 +58,7 @@ async function search() {
   const dest = document.getElementById('rDest').value.trim();
   const weight = document.getElementById('rWeight').value || 1000;
   const prioritize = document.getElementById('rPriority').value;
-  if (!origin || !dest) { alert('Enter origin and destination'); return; }
+  if (!origin || !dest) { APP.toast("Enter origin and destination", "", "warning"); return; }
   try {
     const res = await api('/optimize?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(dest) + '&weight=' + weight + '&prioritize=' + prioritize);
     const el = document.getElementById('results');

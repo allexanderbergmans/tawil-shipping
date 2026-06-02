@@ -128,7 +128,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 let searchTimeout;
 let _activityType = "all";
@@ -157,11 +157,21 @@ let _charts = [];
 async function load() {
   _charts.forEach(c => c.destroy());
   _charts = [];
-  const [ov, act, bn, rules, timeline, comp] = await Promise.all([
+  // Quick health check so loading divs don't hang
+  const healthy = await Promise.race([
+    fetch("/api/health").then(r => r.ok),
+    new Promise(r => setTimeout(r, 2000))
+  ]);
+  if (!healthy) {
+    document.querySelectorAll("[id]").forEach(el => {
+      if (el.querySelector(".loading")) el.innerHTML = '<div class="error" style="padding:8px;font-size:12px">⚠ Server unreachable. <button class="btn btn-sm" onclick="location.reload()">Retry</button></div>';
+    });
+    return;
+  }
+  const [ov, act, bn, timeline, comp] = await Promise.all([
     api("/visibility/overview").catch(() => null),
     api("/visibility/activity?limit=20").catch(() => []),
     api("/visibility/bottlenecks").catch(() => []),
-    api("/compliance/rules").catch(() => []),
     api("/visibility/timeline?days=7").catch(() => []),
     api("/visibility/compliance-summary").catch(() => null),
   ]);
@@ -190,6 +200,8 @@ async function load() {
       <div class="stat-card"><div class="label">Total Cargo Value</div><div class="value blue">${formatCurrency(ov.totalValue)}</div></div>
       <div class="stat-card"><div class="label">Status Breakdown</div><div class="value" style="font-size:16px">${(ov.byStatus || []).map(s => `<span class="badge ${s.status === 'in_transit' ? 'blue' : s.status === 'pending' ? 'yellow' : 'green'}">${s.status}: ${s.count}</span>`).join(' ')}</div></div>
     `;
+  } else {
+    document.getElementById("stats").innerHTML = '<div class="error" style="padding:12px;font-size:13px">Failed to load stats.</div>';
   }
 
   // Chart 1: Status doughnut
@@ -233,27 +245,17 @@ async function load() {
     }));
   }
 
-  // SLA breaches + internal feature cards
+  // Internal feature cards (fire-and-forget, short timeout)
   APP.loadSLAPenalties("slaPenalties");
   APP.loadComplianceHealth("complianceHealth");
   APP.loadLaneHealth("laneHealth");
   APP.loadTelemetryAlerts("telemetryAlerts");
   APP.findConsolidations("consolidations");
-  if (bn.length === 0) { document.getElementById("bottlenecks").innerHTML = '<div class="empty-state">No bottlenecks.</div>'; }
-  else {
-    document.getElementById("bottlenecks").innerHTML = `<table><thead><tr><th>Location</th><th>Events</th><th>Shipments</th></tr></thead><tbody>
-      ${bn.map(b => `<tr><td>${b.location}</td><td>${b.events}</td><td>${b.shipments}</td></tr>`).join("")}
-    </tbody></table>`;
-  }
 
-  // Rules summary
-  if (rules.length) {
-    const byType = {};
-    for (const r of rules) { byType[r.type] = (byType[r.type] || 0) + 1; }
-    document.getElementById("rulesSummary").innerHTML = Object.entries(byType).map(([t, c]) =>
-      `<span class="badge blue" style="font-size:13px;margin:0 4px 4px 0">${t}: ${c}</span>`
-    ).join('') + ` <span style="font-size:13px;color:var(--gray-400)">(${rules.length} total rules)</span>`;
-  }
+  // Safety: replace any leftover loading divs with error (skip feature cards — they handle themselves)
+  document.querySelectorAll("#activity, #bottlenecks").forEach(el => {
+    if (el.querySelector(".loading")) el.innerHTML = '<div class="error" style="padding:8px;font-size:12px">Failed to load. <button class="btn btn-sm" onclick="location.reload()">Retry</button></div>';
+  });
 }
 
 function loadActivity(act) {

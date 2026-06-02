@@ -81,7 +81,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 APP.checkAuth().then(loggedIn => {
   if (!loggedIn) return location.href = '/login.html';
@@ -117,7 +117,7 @@ async function createUser() {
     role: document.getElementById('newRole').value,
   };
   try { await api('/admin/users', { method: 'POST', body: data }); closeModal('userModal'); loadUsers(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Create user failed", e.message, "error"); }
 }
 
 async function loadKeys() {
@@ -134,21 +134,32 @@ async function loadKeys() {
 
 async function showCreateKey() {
   const userId = document.getElementById('keyUserId').value || undefined;
-  const name = prompt('Key name:');
-  if (!name) return;
-  try {
-    const result = await api('/admin/api-keys', { method: 'POST', body: { name, user_id: userId } });
-    document.getElementById('newKeyDisplay').textContent = result.key;
-    document.getElementById('newKeyDisplay').style.display = 'block';
-    document.getElementById('keyModal').classList.add('active');
-    loadKeys();
-  } catch(e) { alert(e.message); }
+  APP.openModal({
+    title: "New API Key",
+    content: '<label style="font-size:12px;color:var(--gray-500)">Key Name</label><input id="newKeyNameInput" placeholder="e.g. integration-key" style="width:100%;padding:8px;font-size:14px;border:1px solid var(--gray-200);border-radius:var(--radius);margin-top:4px">',
+    actions: [
+      { label: "Create", primary: true, callback: async () => {
+        const name = document.getElementById('newKeyNameInput').value;
+        if (!name) { APP.toast("Enter a key name", "", "warning"); return; }
+        try {
+          const result = await api('/admin/api-keys', { method: 'POST', body: { name, user_id: userId } });
+          APP.closeModal();
+          document.getElementById('newKeyDisplay').textContent = result.key;
+          document.getElementById('newKeyDisplay').style.display = 'block';
+          document.getElementById('keyModal').classList.add('active');
+          loadKeys();
+        } catch(e) { APP.toast("Key creation failed", e.message, "error"); }
+      }},
+      { label: "Cancel", callback: () => APP.closeModal() }
+    ]
+  });
 }
 
 async function deleteKey(id) {
-  if (!confirm('Delete this API key?')) return;
+  const confirmed = await APP.confirm("Delete API Key", "Revoke this API key immediately?", "danger");
+  if (!confirmed) return;
   try { await api('/admin/api-keys/' + id, { method: 'DELETE' }); loadKeys(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Delete failed", e.message, "error"); }
 }
 
 async function loadAudit() {

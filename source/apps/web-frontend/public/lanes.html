@@ -42,7 +42,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 APP.checkAuth().then(() => { APP.renderNav(); load(); });
 
@@ -100,7 +100,7 @@ async function showDetail(origin, destination) {
     }
 
     el.innerHTML = html;
-  } catch(e) { alert(e.message); }
+  } catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 function escape(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

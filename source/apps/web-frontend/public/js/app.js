@@ -28,6 +28,14 @@ const APP = {
     this.setupRefreshIndicator();
     this.loadUnreadCount();
     this.connectWS();
+    // Safety: clear stuck loading indicators after 12s
+    setTimeout(() => APP.clearStuckLoaders(), 25000);
+  },
+
+  clearStuckLoaders() {
+    document.querySelectorAll(".loading").forEach(el => {
+      if (el.textContent.includes("Loading")) el.innerHTML = '<div class="error" style="padding:8px;font-size:12px">Request timed out. <button class="btn btn-sm" onclick="location.reload()">Retry</button></div>';
+    });
   },
 
   /* ── Auth ── */
@@ -49,7 +57,9 @@ const APP = {
   async checkAuth() {
     if (!this.token) { this.clearAuth(); return false; }
     try {
-      const res = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + this.token } });
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 3000);
+      const res = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + this.token }, signal: ctrl.signal });
       if (!res.ok) { this.clearAuth(); return false; }
       const data = await res.json();
       this.user = data.user;
@@ -62,28 +72,28 @@ const APP = {
     const links = document.querySelectorAll(".sidebar-nav a");
     if (!links.length) return;
     // Inject Optimizer link if not present
-    const nav = document.querySelector(".sidebar-nav");
-    if (nav && !nav.querySelector('a[href="/optimizer.html"]')) {
+    const n = document.querySelector(".sidebar-nav");
+    if (n && !n.querySelector('a[href="/optimizer.html"]')) {
       const optLink = document.createElement("a");
       optLink.href = "/optimizer.html";
       optLink.textContent = "Route Optimizer";
       optLink.dataset.search = "true";
       if (location.pathname === "/optimizer.html") optLink.className = "active";
       // Insert before Documents
-      const docsLink = nav.querySelector('a[href="/documents.html"]');
-      if (docsLink && docsLink.parentNode) nav.insertBefore(optLink, docsLink.nextSibling);
-      else nav.appendChild(optLink);
+      const docsLink = n.querySelector('a[href="/documents.html"]');
+      if (docsLink && docsLink.parentNode) n.insertBefore(optLink, docsLink.nextSibling);
+      else n.appendChild(optLink);
     }
     if (this.isAdmin()) {
-      const nav = document.querySelector(".sidebar-nav");
-      if (nav) {
-        const navHTML = Array.from(nav.querySelectorAll("a")).map(a => a.outerHTML).join("");
+      const nav2 = document.querySelector(".sidebar-nav");
+      if (nav2) {
+        const navHTML = Array.from(nav2.querySelectorAll("a")).map(a => a.outerHTML).join("");
         const extra = [];
         extra.push(`<a href="/admin.html"${location.pathname === "/admin.html" ? ' class="active"' : ''}>Admin</a>`);
         extra.push(`<a href="/webhooks.html"${location.pathname === "/webhooks.html" ? ' class="active"' : ''}>Webhooks</a>`);
         var notifIdx = navHTML.indexOf('/notifications.html');
         if (notifIdx === -1) {
-          nav.innerHTML = navHTML + extra.join("");
+          nav2.innerHTML = navHTML + extra.join("");
         }
       }
     }
@@ -486,11 +496,14 @@ const APP = {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     opts.signal = controller.signal;
+    if (opts.body && typeof opts.body === "object") opts.body = JSON.stringify(opts.body);
     this.showLoading();
     try {
       const res = await fetch(base + path, opts);
       clearTimeout(timer);
-      return res;
+      if (res.status === 401) { this.clearAuth(); if (!location.pathname.includes("login.html")) location.href = "/login.html"; throw new Error("Session expired"); }
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: res.statusText })); throw new Error(err.error || "HTTP " + res.status); }
+      return res.json();
     } catch (err) {
       clearTimeout(timer);
       if (err.name === "AbortError") throw new Error("Request timed out");
@@ -911,7 +924,7 @@ const APP = {
     const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
     if (!el) return;
     try {
-      const breaches = await APP.api("/api/sla/breaches?limit=100");
+      const breaches = await APP.api("/api/sla/breaches?limit=100", { timeout: 5000 });
       const list = breaches && breaches.length ? breaches : (breaches && breaches.rows ? breaches.rows : []);
       if (!list.length) { el.innerHTML = '<div class="text-muted">No breaches found.</div>'; return; }
       const totalPenalty = list.reduce((s, b) => s + (b.penalty || 0), 0);
@@ -937,7 +950,7 @@ const APP = {
     const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
     if (!el) return;
     try {
-      const lanes = await APP.api("/api/trade-lanes");
+      const lanes = await APP.api("/api/trade-lanes", { timeout: 5000 });
       if (!lanes || !lanes.length) { el.innerHTML = '<div class="text-muted">No lane data.</div>'; return; }
       let html = '<table class="table" style="font-size:12px"><thead><tr><th>Lane</th><th>Shipments</th><th>Completion</th><th>Issues</th><th>Health</th><th>Avg Value</th></tr></thead><tbody>';
       lanes.slice(0, 20).forEach(l => {
@@ -955,7 +968,7 @@ const APP = {
     const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
     if (!el) return;
     try {
-      const alerts = await APP.api("/api/telemetry/alerts");
+      const alerts = await APP.api("/api/telemetry/alerts", { timeout: 5000 });
       if (!alerts || !alerts.length) { el.innerHTML = '<div class="text-muted">No active telemetry alerts.</div>'; return; }
       const bySeverity = { critical: [], warning: [], info: [] };
       alerts.forEach(a => { const s = a.severity || "warning"; bySeverity[s] ? bySeverity[s].push(a) : (bySeverity[s] = [a]); });
@@ -982,7 +995,7 @@ const APP = {
     const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
     if (!el) return;
     try {
-      const summary = await APP.api("/api/visibility/compliance-summary");
+      const summary = await APP.api("/api/visibility/compliance-summary", { timeout: 5000 });
       if (!summary) { el.innerHTML = '<div class="text-muted">No compliance data.</div>'; return; }
       const byResult = summary.byResult || [];
       const total = byResult.reduce((s, r) => s + r.count, 0);
@@ -1012,7 +1025,7 @@ const APP = {
     const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
     if (!el) return;
     try {
-      const shipments = await APP.api("/api/shipments?limit=500");
+      const shipments = await APP.api("/api/shipments?limit=500", { timeout: 5000 });
       const list = shipments.data || [];
       const groups = {};
       list.forEach(s => {

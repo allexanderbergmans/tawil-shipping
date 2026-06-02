@@ -48,7 +48,7 @@
 </div>
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 async function load() {
   try {
@@ -77,12 +77,12 @@ async function load() {
 
 async function markRead(id) {
   try { await api("/notifications/" + id + "/read", { method: "PATCH" }); load(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 async function markAllRead() {
   try { await api("/notifications/read-all", { method: "POST" }); load(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 load();
 </script>

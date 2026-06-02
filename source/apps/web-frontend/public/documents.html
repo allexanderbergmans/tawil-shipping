@@ -110,7 +110,7 @@ author: Global Logistics Mesh
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 APP.checkAuth().then(() => {
   APP.renderNav();
@@ -141,7 +141,7 @@ async function compileAndSaveDoc() {
   const format = document.getElementById('docFormat').value;
   const shipmentId = document.getElementById('docShipmentId').value;
   const type = document.getElementById('docType').value || 'report';
-  if (!source || !shipmentId) { alert('Shipment ID is required to save.'); return; }
+  if (!source || !shipmentId) { APP.toast("Shipment ID is required to save", "", "warning"); return; }
   try {
     const result = await api('/documents', { method: 'POST', body: { shipment_id: shipmentId, type, title: 'Compiled Document', source, format } });
     document.getElementById('docOutput').innerHTML = `<div style="color:var(--success)">Document saved (${result.id}).</div>`;
@@ -168,7 +168,7 @@ async function useTemplate(id) {
     const templates = await api('/documents/templates/all');
     const tpl = templates.find(t => t.id === id);
     if (tpl) { document.getElementById('docSource').value = tpl.content; switchTab('compiler', document.querySelector('.tab')); }
-  } catch(e) { alert(e.message); }
+  } catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 function showTemplateModal() { document.getElementById('templateModal').classList.add('active'); }
@@ -183,7 +183,7 @@ async function saveTemplate() {
     variables: vars,
   };
   try { await api('/documents/templates', { method: 'POST', body }); closeTemplateModal(); loadTemplates(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

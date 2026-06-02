@@ -116,7 +116,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 let _page = 1;
 let PAGE_SIZE = APP.rowsPerPagePref;
@@ -282,7 +282,7 @@ async function createShipment(e) {
   const data = Object.fromEntries(fd.entries());
   Object.keys(data).forEach(k => { if (data[k] === '') delete data[k]; });
   try { await api('/shipments', { method: 'POST', body: data }); e.target.reset(); document.getElementById('createForm').style.display = 'none'; load(); }
-  catch(err) { alert(err.message); }
+  catch(err) { APP.toast("Create failed", err.message, "error"); }
 }
 
 async function bulkImport() {

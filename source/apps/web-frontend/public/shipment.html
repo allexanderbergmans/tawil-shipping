@@ -44,7 +44,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 const id = new URLSearchParams(location.search).get('id');
 let _shipment = null;
@@ -265,19 +265,38 @@ async function loadTelemetry() {
 
 async function genTelemetry() {
   try { await api('/telemetry/' + id + '/generate?count=3', { method: 'POST' }); loadTelemetry(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Telemetry generation failed", e.message, "error"); }
 }
 
 async function recordTrack() {
-  const status = prompt('Status:');
-  if (!status) return;
-  const location = prompt('Location:') || '';
-  const description = prompt('Description:') || '';
-  try {
-    await api('/shipments/' + id + '/track', { method: 'POST', body: { status, location, description } });
-    document.getElementById('actionResult').innerHTML = '<div style="color:var(--success);font-size:13px">Event recorded.</div>';
-    loadTimeline();
-  } catch(e) { alert(e.message); }
+  const statuses = ["pending", "in_transit", "delayed", "customs_hold", "cleared", "delivered", "exception", "approved"];
+  APP.openModal({
+    title: "Record Tracking Event",
+    content: '<div style="display:flex;flex-direction:column;gap:10px;padding:4px 0">' +
+      '<label style="font-size:12px;color:var(--gray-500)">Status</label>' +
+      '<select id="trackStatus" style="padding:8px;font-size:14px;border:1px solid var(--gray-200);border-radius:var(--radius)">' +
+        statuses.map(s => '<option value="' + s + '">' + s.replace(/_/g, " ") + '</option>').join('') +
+      '</select>' +
+      '<label style="font-size:12px;color:var(--gray-500)">Location</label>' +
+      '<input id="trackLocation" placeholder="Optional" style="padding:8px;font-size:14px;border:1px solid var(--gray-200);border-radius:var(--radius)">' +
+      '<label style="font-size:12px;color:var(--gray-500)">Description</label>' +
+      '<textarea id="trackDescription" placeholder="Optional notes" rows="2" style="padding:8px;font-size:14px;border:1px solid var(--gray-200);border-radius:var(--radius);resize:vertical;font-family:inherit"></textarea>' +
+    '</div>',
+    actions: [
+      { label: "Record", primary: true, callback: async () => {
+        const status = document.getElementById('trackStatus').value;
+        const location = document.getElementById('trackLocation').value || '';
+        const description = document.getElementById('trackDescription').value || '';
+        try {
+          await api('/shipments/' + id + '/track', { method: 'POST', body: { status, location, description } });
+          APP.closeModal();
+          document.getElementById('actionResult').innerHTML = '<div style="color:var(--success);font-size:13px">Event recorded.</div>';
+          loadTimeline();
+        } catch(e) { APP.toast("Failed", e.message, "error"); }
+      }},
+      { label: "Cancel", callback: () => APP.closeModal() }
+    ]
+  });
 }
 
 async function runCompliance() {
@@ -286,17 +305,17 @@ async function runCompliance() {
     document.getElementById('actionResult').innerHTML =
       `<div style="font-size:13px">${r.passed ? 'All passed' : 'Issues found'}. ${r.flags.length} flagged, ${r.failures.length} blocked.</div>`;
     loadCompliance();
-  } catch(e) { alert(e.message); }
+  } catch(e) { APP.toast("Compliance check failed", e.message, "error"); }
 }
 
 async function approveShipment() {
-  const status = confirm('Approve and clear this shipment?') ? 'approved' : 'rejected';
-  if (!status) return;
+  const confirmed = await APP.confirm("Approve Shipment", "Clear this shipment for release?", "confirm");
+  if (!confirmed) return;
   try {
-    await api('/compliance/approve/' + id, { method: 'POST', body: { status } });
-    document.getElementById('actionResult').innerHTML = `<div style="color:var(--success);font-size:13px">Shipment ${status}.</div>`;
+    await api('/compliance/approve/' + id, { method: 'POST', body: { status: 'approved' } });
+    document.getElementById('actionResult').innerHTML = `<div style="color:var(--success);font-size:13px">Shipment approved.</div>`;
     load();
-  } catch(e) { alert(e.message); }
+  } catch(e) { APP.toast("Approval failed", e.message, "error"); }
 }
 
 /* ── Inline editing ── */

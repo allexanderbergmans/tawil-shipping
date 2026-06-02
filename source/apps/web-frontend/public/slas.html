@@ -74,7 +74,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 APP.checkAuth().then(() => { APP.renderNav(); load(); });
 
@@ -110,15 +110,15 @@ async function load() {
 }
 
 async function toggleSLA(id, active) {
-  try { await api('/sla/' + id, { method: 'PUT', body: { is_active: active } }); load(); } catch(e) { alert(e.message); }
+  try { await api('/sla/' + id, { method: 'PUT', body: { is_active: active } }); load(); } catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 async function detectBreaches() {
   try {
     const r = await api('/sla/detect', { method: 'POST' });
-    alert(r.count + ' new breach(es) detected');
+    APP.toast("Breach detection", r.count + " new breach(es) detected", r.count > 0 ? "warning" : "info");
     load();
-  } catch(e) { alert(e.message); }
+  } catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 function showCreate() { document.getElementById('createForm').style.display = 'block'; }
@@ -132,7 +132,7 @@ async function createSLA(e) {
   if (data.transit_hours) data.transit_hours = parseFloat(data.transit_hours);
   if (data.penalty_per_hour) data.penalty_per_hour = parseFloat(data.penalty_per_hour);
   if (data.penalty_cap) data.penalty_cap = parseFloat(data.penalty_cap);
-  try { await api('/sla', { method: 'POST', body: data }); hideCreate(); load(); } catch(e) { alert(e.message); }
+  try { await api('/sla', { method: 'POST', body: data }); hideCreate(); load(); } catch(e) { APP.toast("Failed", e.message, "error"); }
 }
 
 function escape(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }

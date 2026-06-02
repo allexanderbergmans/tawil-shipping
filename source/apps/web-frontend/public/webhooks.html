@@ -53,7 +53,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/ws.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
 APP.checkAuth().then(loggedIn => {
   if (!loggedIn) return location.href = '/login.html';
@@ -128,15 +128,16 @@ async function saveWebhook() {
     if (id) await api('/webhooks/' + id, { method: 'PUT', body });
     else await api('/webhooks', { method: 'POST', body });
     closeModal(); loadWebhooks();
-  } catch(e) { alert(e.message); }
+  } catch(e) { APP.toast("Save failed", e.message, "error"); }
 }
 
-function editWebhook(id) { alert('Edit via PATCH not implemented in this view. Delete and recreate.'); }
+function editWebhook(id) { APP.toast("Edit not available", "Delete and recreate this webhook", "info"); }
 
 async function deleteWebhook(id) {
-  if (!confirm('Delete this webhook?')) return;
+  const confirmed = await APP.confirm("Delete Webhook", "Delete this webhook permanently?", "danger");
+  if (!confirmed) return;
   try { await api('/webhooks/' + id, { method: 'DELETE' }); loadWebhooks(); }
-  catch(e) { alert(e.message); }
+  catch(e) { APP.toast("Delete failed", e.message, "error"); }
 }
 
 document.getElementById('evtAll').addEventListener('change', function() {

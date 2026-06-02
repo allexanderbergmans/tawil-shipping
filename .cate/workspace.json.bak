@@ -7,10 +7,10 @@
       {
         "panelId": "f68a335d-f4a7-4d94-a3b2-d82f073ade49",
         "panelType": "terminal",
-        "title": "npm run peers",
+        "title": "C:\\WINDOWS\\system32\\cmd.exe - npm  run peers",
         "origin": {
-          "x": 100,
-          "y": 100
+          "x": 112.84786450508261,
+          "y": 97.8586892491529
         },
         "size": {
           "width": 640,
