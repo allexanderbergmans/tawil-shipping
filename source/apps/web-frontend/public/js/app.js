@@ -7,6 +7,11 @@ const APP = {
   loadingCount: 0,
   refreshEnabled: true,
 
+  formatCurrency(v) {
+    if (v == null || isNaN(v)) return "$0.00";
+    return "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  },
+
   init() {
     this.token = localStorage.getItem("glm_token");
     const userData = localStorage.getItem("glm_user");
@@ -56,6 +61,19 @@ const APP = {
   renderNav() {
     const links = document.querySelectorAll(".sidebar-nav a");
     if (!links.length) return;
+    // Inject Optimizer link if not present
+    const nav = document.querySelector(".sidebar-nav");
+    if (nav && !nav.querySelector('a[href="/optimizer.html"]')) {
+      const optLink = document.createElement("a");
+      optLink.href = "/optimizer.html";
+      optLink.textContent = "Route Optimizer";
+      optLink.dataset.search = "true";
+      if (location.pathname === "/optimizer.html") optLink.className = "active";
+      // Insert before Documents
+      const docsLink = nav.querySelector('a[href="/documents.html"]');
+      if (docsLink && docsLink.parentNode) nav.insertBefore(optLink, docsLink.nextSibling);
+      else nav.appendChild(optLink);
+    }
     if (this.isAdmin()) {
       const nav = document.querySelector(".sidebar-nav");
       if (nav) {
@@ -835,6 +853,186 @@ const APP = {
 
   /* ── Pulse animation helper (network health) ── */
   pulse(el) { el.classList.add("pulsing"); setTimeout(() => el.classList.remove("pulsing"), 1500); },
+
+  /* ════════════════════════════════════════════════════════════════
+     INTERNAL FEATURES — computational / functional utilities
+     ════════════════════════════════════════════════════════════════ */
+
+  /* ── Route Optimizer ── */
+  async findRoutes(origin, destination, weightKg) {
+    try {
+      const res = await APP.api("/api/optimize?origin=" + encodeURIComponent(origin) + "&destination=" + encodeURIComponent(destination) + (weightKg ? "&weight=" + weightKg : ""));
+      return res || [];
+    } catch { return []; }
+  },
+
+  renderRouteComparison(containerId, routes) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) return;
+    if (!routes || !routes.length) { el.innerHTML = '<div class="text-muted">No routes found.</div>'; return; }
+    const best = routes[0];
+    let html = '<table class="table" style="font-size:12px"><thead><tr><th>Mode</th><th>Transit</th><th>Cost</th><th>CO₂</th><th>Reliability</th><th></th></tr></thead><tbody>';
+    routes.forEach(r => {
+      const isBest = r === best;
+      html += '<tr' + (isBest ? ' style="background:var(--success-light, #def7ec)"' : '') + '>';
+      html += '<td><strong>' + (r.mode || "").toUpperCase() + '</strong></td>';
+      html += '<td>' + (r.transit_days || r.transitDays || "—") + ' days</td>';
+      html += '<td>' + APP.formatCurrency(r.total_cost || r.totalCost || 0) + '</td>';
+      html += '<td>' + (r.total_co2 || r.totalCO2 || 0).toFixed(1) + ' kg</td>';
+      html += '<td>' + (r.reliability != null ? (r.reliability * 100).toFixed(0) + '%' : '—') + '</td>';
+      html += '<td>' + (isBest ? '<span class="badge green">Recommended</span>' : '') + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  },
+
+  /* ── Carbon Calculator (client-side, mirrors backend formula) ── */
+  carbonEstimate(origin, destination, weightKg, mode) {
+    const emissionFactors = { sea: 0.015, air: 0.85, road: 0.12, rail: 0.028 };
+    const distances = {
+      "ningbo→rotterdam": 10500, "shanghai→hamburg": 9800, "singapore→los angeles": 7100,
+      "rotterdam→new york": 3400, "dubai→mombasa": 2400, "shenzhen→long beach": 6200,
+      "hamburg→new york": 3700, "shanghai→rotterdam": 10400, "mumbai→london": 6300,
+      "rotterdam→singapore": 8300,
+    };
+    const key = ((origin || "") + "→" + (destination || "")).toLowerCase();
+    const dist = distances[key] || 5000;
+    const ef = emissionFactors[mode] || 0.015;
+    const co2Kg = dist * ((weightKg || 1000) / 1000) * ef;
+    const co2Tonnes = co2Kg / 1000;
+    const offsetCost = co2Tonnes * 15;
+    const equivKm = co2Kg / 0.25;
+    return { co2Kg: Math.round(co2Kg), co2Tonnes: Math.round(co2Tonnes * 100) / 100, offsetCost: Math.round(offsetCost * 100) / 100, equivalentKmDriven: Math.round(equivKm), distanceKm: dist, emissionFactor: ef };
+  },
+
+  /* ── SLA Penalty Analyzer ── */
+  async loadSLAPenalties(containerId) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) return;
+    try {
+      const breaches = await APP.api("/api/sla/breaches?limit=100");
+      const list = breaches && breaches.length ? breaches : (breaches && breaches.rows ? breaches.rows : []);
+      if (!list.length) { el.innerHTML = '<div class="text-muted">No breaches found.</div>'; return; }
+      const totalPenalty = list.reduce((s, b) => s + (b.penalty || 0), 0);
+      const byRule = {};
+      list.forEach(b => {
+        const r = b.rule_name || "unknown";
+        byRule[r] = byRule[r] || { count: 0, penalty: 0 };
+        byRule[r].count++;
+        byRule[r].penalty += b.penalty || 0;
+      });
+      let html = '<div style="font-size:13px;margin-bottom:8px"><strong>' + list.length + '</strong> breaches, <strong>' + APP.formatCurrency(totalPenalty) + '</strong> total penalties</div>';
+      html += '<table class="table" style="font-size:12px"><thead><tr><th>Rule</th><th>Breaches</th><th>Penalty</th></tr></thead><tbody>';
+      Object.entries(byRule).sort((a, b) => b[1].penalty - a[1].penalty).forEach(([rule, d]) => {
+        html += '<tr><td>' + rule + '</td><td>' + d.count + '</td><td>' + APP.formatCurrency(d.penalty) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    } catch { el.innerHTML = '<div class="text-muted">Failed to load penalties.</div>'; }
+  },
+
+  /* ── Trade Lane Health ── */
+  async loadLaneHealth(containerId) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) return;
+    try {
+      const lanes = await APP.api("/api/trade-lanes");
+      if (!lanes || !lanes.length) { el.innerHTML = '<div class="text-muted">No lane data.</div>'; return; }
+      let html = '<table class="table" style="font-size:12px"><thead><tr><th>Lane</th><th>Shipments</th><th>Completion</th><th>Issues</th><th>Health</th><th>Avg Value</th></tr></thead><tbody>';
+      lanes.slice(0, 20).forEach(l => {
+        const health = l.health || (l.issue_rate != null ? (l.issue_rate < 10 ? "good" : l.issue_rate < 30 ? "fair" : "poor") : "—");
+        const healthClass = health === "good" ? "green" : health === "fair" ? "yellow" : "red";
+        html += '<tr><td>' + (l.origin || "?") + ' → ' + (l.destination || "?") + '</td><td>' + (l.shipment_count || l.count || 0) + '</td><td>' + (l.completion_rate != null ? (l.completion_rate * 100).toFixed(0) + '%' : '—') + '</td><td>' + (l.issue_count || l.issues || 0) + '</td><td><span class="badge ' + healthClass + '">' + health + '</span></td><td>' + APP.formatCurrency(l.avg_value || l.averageValue || 0) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    } catch { el.innerHTML = '<div class="text-muted">Failed to load lanes.</div>'; }
+  },
+
+  /* ── Telemetry Alert Hub ── */
+  async loadTelemetryAlerts(containerId) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) return;
+    try {
+      const alerts = await APP.api("/api/telemetry/alerts");
+      if (!alerts || !alerts.length) { el.innerHTML = '<div class="text-muted">No active telemetry alerts.</div>'; return; }
+      const bySeverity = { critical: [], warning: [], info: [] };
+      alerts.forEach(a => { const s = a.severity || "warning"; bySeverity[s] ? bySeverity[s].push(a) : (bySeverity[s] = [a]); });
+      const order = ["critical", "warning", "info"];
+      let html = '<div style="font-size:13px;margin-bottom:8px"><strong>' + alerts.length + '</strong> active alerts';
+      order.forEach(s => { if (bySeverity[s] && bySeverity[s].length) html += ' · <span style="color:' + (s === "critical" ? "var(--danger)" : s === "warning" ? "var(--warning)" : "var(--gray-400)") + '">' + bySeverity[s].length + ' ' + s + '</span>'; });
+      html += '</div>';
+      order.forEach(s => {
+        if (!bySeverity[s] || !bySeverity[s].length) return;
+        bySeverity[s].slice(0, 5).forEach(a => {
+          html += '<div class="breach-card" style="border-left-color:' + (s === "critical" ? "var(--danger)" : s === "warning" ? "var(--warning)" : "var(--gray-400)") + '">';
+          html += '<div class="breach-title">' + (a.sensor || "Sensor") + ': ' + (a.message || "Alert") + '</div>';
+          html += '<div class="breach-meta">Shipment ' + (a.shipment_id || "").slice(0, 8) + '… | ' + new Date(a.created_at).toLocaleString() + '</div>';
+          html += '</div>';
+        });
+        if (bySeverity[s].length > 5) html += '<div class="text-muted" style="font-size:11px;padding:2px 0 6px">+' + (bySeverity[s].length - 5) + ' more</div>';
+      });
+      el.innerHTML = html;
+    } catch { el.innerHTML = '<div class="text-muted">Failed to load alerts.</div>'; }
+  },
+
+  /* ── Compliance Health Score ── */
+  async loadComplianceHealth(containerId) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) return;
+    try {
+      const summary = await APP.api("/api/visibility/compliance-summary");
+      if (!summary) { el.innerHTML = '<div class="text-muted">No compliance data.</div>'; return; }
+      const byResult = summary.byResult || [];
+      const total = byResult.reduce((s, r) => s + r.count, 0);
+      const passes = byResult.find(r => r.result === "pass");
+      const failures = byResult.find(r => r.result === "fail");
+      const flags = byResult.find(r => r.result === "flag");
+      const passCount = passes ? passes.count : 0;
+      const failCount = failures ? failures.count : 0;
+      const flagCount = flags ? flags.count : 0;
+      const passRate = total > 0 ? (passCount / total * 100).toFixed(1) : 0;
+      const health = passRate >= 90 ? "good" : passRate >= 70 ? "fair" : "poor";
+      let html = '<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">';
+      html += '<div style="width:60px;height:60px;border-radius:50%;background:' + (health === "good" ? "var(--success)" : health === "fair" ? "var(--warning)" : "var(--danger)") + ';display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:16px">' + passRate + '%</div>';
+      html += '<div><div style="font-size:13px">' + total + ' total checks</div>';
+      html += '<div style="font-size:11px;color:var(--gray-400)">' + passCount + ' pass · ' + failCount + ' fail · ' + flagCount + ' flag</div></div></div>';
+      if (summary.byRule && summary.byRule.length) {
+        html += '<table class="table" style="font-size:11px"><thead><tr><th>Rule Type</th><th>Count</th></tr></thead><tbody>';
+        summary.byRule.forEach(r => { html += '<tr><td>' + r.type + '</td><td>' + r.count + '</td></tr>'; });
+        html += '</tbody></table>';
+      }
+      el.innerHTML = html;
+    } catch { el.innerHTML = '<div class="text-muted">Failed to load compliance health.</div>'; }
+  },
+
+  /* ── Shipment Consolidation Finder ── */
+  async findConsolidations(containerId) {
+    const el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) return;
+    try {
+      const shipments = await APP.api("/api/shipments?limit=500");
+      const list = shipments.data || [];
+      const groups = {};
+      list.forEach(s => {
+        const key = (s.origin || "?") + "→" + (s.destination || "?");
+        groups[key] = groups[key] || [];
+        groups[key].push(s);
+      });
+      const candidates = Object.entries(groups).filter(([, sh]) => sh.length >= 2).sort((a, b) => b[1].length - a[1].length);
+      if (!candidates.length) { el.innerHTML = '<div class="text-muted">No consolidation candidates found.</div>'; return; }
+      let html = '<div style="font-size:13px;margin-bottom:8px"><strong>' + candidates.length + '</strong> lanes with 2+ shipments</div>';
+      html += '<table class="table" style="font-size:12px"><thead><tr><th>Lane</th><th>Shipments</th><th>Total Value</th><th>Weight</th></tr></thead><tbody>';
+      candidates.slice(0, 15).forEach(([lane, sh]) => {
+        const totalVal = sh.reduce((s, x) => s + (x.cargo_value || 0), 0);
+        const totalWt = sh.reduce((s, x) => s + (x.weight_kg || 0), 0);
+        html += '<tr><td><strong>' + lane + '</strong></td><td>' + sh.length + '</td><td>' + APP.formatCurrency(totalVal) + '</td><td>' + (totalWt ? totalWt.toFixed(0) + ' kg' : '—') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    } catch { el.innerHTML = '<div class="text-muted">Failed to analyze.</div>'; }
+  },
 };
 
 APP.init();

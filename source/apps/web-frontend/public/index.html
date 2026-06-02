@@ -74,13 +74,55 @@
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
     <div class="card">
-      <div class="card-header">SLA Breaches</div>
-      <div id="breaches"><div class="loading">Loading...</div></div>
+      <div class="card-header">SLA Breaches <button class="btn btn-sm" onclick="APP.loadSLAPenalties('slaPenalties')">↻</button></div>
+      <div id="slaPenalties"><div class="loading">Loading...</div></div>
     </div>
     <div class="card">
-      <div class="card-header">Compliance Rules Summary</div>
-      <div id="rulesSummary"><div class="loading">Loading...</div></div>
+      <div class="card-header">Compliance Health</div>
+      <div id="complianceHealth"><div class="loading">Loading...</div></div>
     </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+    <div class="card">
+      <div class="card-header">Trade Lane Health</div>
+      <div id="laneHealth"><div class="loading">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Telemetry Alerts</div>
+      <div id="telemetryAlerts"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+    <div class="card">
+      <div class="card-header">Route Optimizer</div>
+      <div style="display:flex;gap:4px;padding:8px;flex-wrap:wrap">
+        <input id="routeOrigin" placeholder="Origin" style="flex:1;min-width:80px;padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius)">
+        <input id="routeDest" placeholder="Destination" style="flex:1;min-width:80px;padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius)">
+        <input id="routeWeight" type="number" placeholder="Weight kg" style="width:80px;padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius)">
+        <button class="btn btn-sm btn-primary" onclick="findRoutes()">Go</button>
+      </div>
+      <div id="routeResults"><div class="text-muted" style="padding:8px;font-size:12px">Enter origin/destination to find routes.</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Consolidation Candidates</div>
+      <div id="consolidations"><div class="loading">Loading...</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="card-header">Carbon Calculator</div>
+    <div style="display:flex;gap:4px;padding:8px;flex-wrap:wrap">
+      <input id="carbonOrigin" placeholder="Origin" style="flex:1;min-width:80px;padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius)">
+      <input id="carbonDest" placeholder="Destination" style="flex:1;min-width:80px;padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius)">
+      <input id="carbonWeight" type="number" placeholder="Weight kg" style="width:80px;padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius)">
+      <select id="carbonMode" style="padding:4px 8px;font-size:12px;border:1px solid var(--gray-200);border-radius:var(--radius);width:auto">
+        <option value="sea">Sea</option><option value="air">Air</option><option value="road">Road</option><option value="rail">Rail</option>
+      </select>
+      <button class="btn btn-sm btn-primary" onclick="calcCarbon()">Estimate</button>
+    </div>
+    <div id="carbonResult"><div class="text-muted" style="padding:8px;font-size:12px">Enter details and click Estimate.</div></div>
   </div>
 </div>
 
@@ -191,8 +233,12 @@ async function load() {
     }));
   }
 
-  // SLA breaches
-  APP.loadBreaches("breaches");
+  // SLA breaches + internal feature cards
+  APP.loadSLAPenalties("slaPenalties");
+  APP.loadComplianceHealth("complianceHealth");
+  APP.loadLaneHealth("laneHealth");
+  APP.loadTelemetryAlerts("telemetryAlerts");
+  APP.findConsolidations("consolidations");
   if (bn.length === 0) { document.getElementById("bottlenecks").innerHTML = '<div class="empty-state">No bottlenecks.</div>'; }
   else {
     document.getElementById("bottlenecks").innerHTML = `<table><thead><tr><th>Location</th><th>Events</th><th>Shipments</th></tr></thead><tbody>
@@ -218,6 +264,32 @@ function loadActivity(act) {
   el.innerHTML = `<table><thead><tr><th>Time</th><th>Ref</th><th>Status</th><th>Location</th></tr></thead><tbody>
     ${filtered.map(e => `<tr><td style="white-space:nowrap">${formatDate(e.timestamp)}</td><td>${e.reference || '—'}</td><td>${statusBadge(e.status)}</td><td>${e.location || '—'}</td></tr>`).join("")}
   </tbody></table>`;
+}
+
+async function findRoutes() {
+  const origin = document.getElementById('routeOrigin').value;
+  const dest = document.getElementById('routeDest').value;
+  const weight = parseFloat(document.getElementById('routeWeight').value) || 1000;
+  if (!origin || !dest) { APP.toast("Enter origin and destination", "", "warning"); return; }
+  const routes = await APP.findRoutes(origin, dest, weight);
+  APP.renderRouteComparison('routeResults', routes);
+}
+
+function calcCarbon() {
+  const origin = document.getElementById('carbonOrigin').value;
+  const dest = document.getElementById('carbonDest').value;
+  const weight = parseFloat(document.getElementById('carbonWeight').value) || 1000;
+  const mode = document.getElementById('carbonMode').value;
+  if (!origin || !dest) { APP.toast("Enter origin and destination", "", "warning"); return; }
+  const est = APP.carbonEstimate(origin, dest, weight, mode);
+  document.getElementById('carbonResult').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:8px;font-size:13px">
+      <div><div class="label">Distance</div><div class="value"><strong>${est.distanceKm.toLocaleString()} km</strong></div></div>
+      <div><div class="label">CO₂ Emissions</div><div class="value"><strong>${est.co2Kg.toLocaleString()} kg</strong> (${est.co2Tonnes} t)</div></div>
+      <div><div class="label">Carbon Offset Cost</div><div class="value"><strong>${APP.formatCurrency(est.offsetCost)}</strong></div></div>
+    </div>
+    <div style="padding:0 8px 8px;font-size:11px;color:var(--gray-400)">Equivalent to driving ${est.equivalentKmDriven.toLocaleString()} km · ${mode.toUpperCase()} · ${APP.formatCurrency(est.offsetCost)} @ $15/tCO₂</div>
+  `;
 }
 
 function setRefreshInterval(secs) {
