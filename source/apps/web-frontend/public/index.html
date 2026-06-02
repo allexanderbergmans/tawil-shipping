@@ -8,33 +8,47 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Global Logistics &amp; Supply Chain Mesh</h1>
     <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
   </div>
-  <nav class="sidebar-nav">
-    <a href="/" class="active">Dashboard</a>
-    <a href="/shipments.html">Shipments</a>
-    <a href="/compliance.html">Compliance</a>
-    <a href="/documents.html">Documents</a>
-    <a href="/notifications.html">Notifications</a>
-    <a href="/network.html">Network</a>
-  <a href="/audit.html">Audit Log</a></nav>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/" class="active">Dashboard</a>
+    <a data-search="true" href="/shipments.html">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/slas.html">SLAs</a>
+    <a data-search="true" href="/audit.html">Audit Log</a>
+    <a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
+  </nav>
 </div>
 <div class="main" id="app">
   <div class="page-header">
     <h2>Dashboard</h2>
-    <div style="display:flex;gap:8px"><span class="ws-status disconnected">Offline</span><a href="/export/shipments/csv" class="btn btn-sm" id="exportCsv" onclick="return doExport(event)">Export CSV</a>
-      <a href="/login.html" id="loginBtn" class="btn btn-sm btn-primary">Sign In</a>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="ws-status disconnected" id="wsStatus">Disconnected</span><button class="sound-toggle" id="soundToggle" onclick="APP.toggleSound(); this.classList.toggle('muted', !APP.soundEnabled); this.textContent = APP.soundEnabled ? '🔊 Sound' : '🔇 Muted'">🔊 Sound</button><span class="refresh-config"><select id="refreshInterval" onchange="setRefreshInterval(parseInt(this.value))"><option value="10">10s</option><option value="30" selected>30s</option><option value="60">60s</option><option value="120">2m</option><option value="300">5m</option><option value="0">Off</option></select></span><button class="btn btn-sm" onclick="showNotifPrefs()">🔔 Prefs</button><button class="btn btn-sm" onclick="showExportModal()">Export</button>
+      <a data-search="true" href="/login.html" id="loginBtn" class="btn btn-sm btn-primary">Sign In</a>
     </div>
   </div>
 
   <div class="search-wrapper">
     <div class="search-bar">
-      <input id="searchInput" placeholder="Search shipments, documents, notifications..." oninput="doSearch()">
+      <input id="globalSearch" placeholder="Search shipments, documents, notifications..." oninput="onSearchInput()">
+      <span class="kbd-hint">Ctrl+K</span>
       <button class="btn btn-sm" onclick="doSearch()">Search</button>
     </div>
+    <div class="recent-searches" id="recentSearches"></div>
     <div class="search-results" id="searchResults"></div>
   </div>
 
@@ -49,6 +63,7 @@
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
     <div class="card">
       <div class="card-header">Recent Activity</div>
+      <div id="activityFilters" class="activity-filters"></div>
       <div id="activity"><div class="loading">Loading...</div></div>
     </div>
     <div class="card">
@@ -57,9 +72,15 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header">Compliance Rules Summary</div>
-    <div id="rulesSummary"><div class="loading">Loading...</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+    <div class="card">
+      <div class="card-header">SLA Breaches</div>
+      <div id="breaches"><div class="loading">Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header">Compliance Rules Summary</div>
+      <div id="rulesSummary"><div class="loading">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -68,12 +89,25 @@
 <script src="/js/app.js"></script>
 <script>
 let searchTimeout;
+let _activityType = "all";
+let _refreshTimer;
+
+function onSearchInput() {
+  const q = document.getElementById('globalSearch').value;
+  if (q.length >= 2) { doSearch(); return; }
+  clearTimeout(searchTimeout);
+  document.getElementById('searchResults').classList.remove('active');
+  const recent = document.getElementById('recentSearches');
+  if (recent) APP.showRecentSearches(recent, (sq) => { document.getElementById('globalSearch').value = sq; doSearch(); });
+}
 
 APP.checkAuth().then(() => {
   APP.renderNav();
   if (APP.isLoggedIn()) document.getElementById('loginBtn').style.display = 'none';
   load();
-  setInterval(load, 30000);
+  const saved = parseInt(localStorage.getItem("refreshInterval") || "30");
+  document.getElementById('refreshInterval').value = String(saved);
+  if (saved > 0) _refreshTimer = setInterval(load, saved * 1000);
 });
 
 let _charts = [];
@@ -83,12 +117,26 @@ async function load() {
   _charts = [];
   const [ov, act, bn, rules, timeline, comp] = await Promise.all([
     api("/visibility/overview").catch(() => null),
-    api("/visibility/activity?limit=10").catch(() => []),
+    api("/visibility/activity?limit=20").catch(() => []),
     api("/visibility/bottlenecks").catch(() => []),
     api("/compliance/rules").catch(() => []),
     api("/visibility/timeline?days=7").catch(() => []),
     api("/visibility/compliance-summary").catch(() => null),
   ]);
+
+  // Activity filters
+  APP.renderActivityFilters(document.getElementById("activityFilters"), _activityType, t => { _activityType = t; loadActivity(act); });
+
+  // Activity
+  loadActivity(act);
+
+  // Bottlenecks
+  if (bn.length === 0) { document.getElementById("bottlenecks").innerHTML = '<div class="empty-state">No bottlenecks.</div>'; }
+  else {
+    document.getElementById("bottlenecks").innerHTML = `<table><thead><tr><th>Location</th><th>Events</th><th>Shipments</th></tr></thead><tbody>
+      ${bn.map(b => `<tr><td>${b.location}</td><td>${b.events}</td><td>${b.shipments}</td></tr>`).join("")}
+    </tbody></table>`;
+  }
 
   const colors = { pending: "#f59e0b", in_transit: "#3b82f6", cleared: "#10b981", delivered: "#059669", delayed: "#ef4444", exception: "#dc2626", customs_hold: "#8b5cf6", fail: "#ef4444", pass: "#10b981", flag: "#f59e0b" };
 
@@ -143,15 +191,8 @@ async function load() {
     }));
   }
 
-  // Activity
-  if (act.length === 0) { document.getElementById("activity").innerHTML = '<div class="empty-state">No activity yet.</div>'; }
-  else {
-    document.getElementById("activity").innerHTML = `<table><thead><tr><th>Time</th><th>Ref</th><th>Status</th><th>Location</th></tr></thead><tbody>
-      ${act.map(e => `<tr><td style="white-space:nowrap">${formatDate(e.timestamp)}</td><td>${e.reference || '—'}</td><td>${statusBadge(e.status)}</td><td>${e.location || '—'}</td></tr>`).join("")}
-    </tbody></table>`;
-  }
-
-  // Bottlenecks
+  // SLA breaches
+  APP.loadBreaches("breaches");
   if (bn.length === 0) { document.getElementById("bottlenecks").innerHTML = '<div class="empty-state">No bottlenecks.</div>'; }
   else {
     document.getElementById("bottlenecks").innerHTML = `<table><thead><tr><th>Location</th><th>Events</th><th>Shipments</th></tr></thead><tbody>
@@ -169,11 +210,53 @@ async function load() {
   }
 }
 
+function loadActivity(act) {
+  const el = document.getElementById("activity");
+  let filtered = act;
+  if (_activityType !== "all") filtered = act.filter(e => (e.type || "").toLowerCase() === _activityType || (e.status || "").toLowerCase().includes(_activityType));
+  if (filtered.length === 0) { el.innerHTML = '<div class="empty-state">No activity yet.</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Time</th><th>Ref</th><th>Status</th><th>Location</th></tr></thead><tbody>
+    ${filtered.map(e => `<tr><td style="white-space:nowrap">${formatDate(e.timestamp)}</td><td>${e.reference || '—'}</td><td>${statusBadge(e.status)}</td><td>${e.location || '—'}</td></tr>`).join("")}
+  </tbody></table>`;
+}
+
+function setRefreshInterval(secs) {
+  localStorage.setItem("refreshInterval", String(secs));
+  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+  if (secs > 0) _refreshTimer = setInterval(load, secs * 1000);
+  APP.toast("Auto-refresh", secs > 0 ? "Every " + secs + "s" : "Paused", "info");
+}
+
+function showNotifPrefs() {
+  const prefs = APP.notifPrefs;
+  const types = ["error", "warning", "info", "success", "critical"];
+  const html = '<div class="notif-prefs">' + types.map(t =>
+    '<label><input type="checkbox" id="np_' + t + '"' + (prefs[t] !== false ? ' checked' : '') + '> ' + t.charAt(0).toUpperCase() + t.slice(1) + '</label>'
+  ).join('') + '</div>';
+  APP.openModal({
+    title: "Notification Preferences",
+    content: html,
+    actions: [
+      { label: "Save", primary: true, callback: () => {
+        const n = {};
+        types.forEach(t => { n[t] = document.getElementById("np_" + t).checked; });
+        APP.notifPrefs = n;
+        APP.closeModal();
+        APP.toast("Preferences saved", "", "success");
+      }},
+      { label: "Cancel", callback: () => APP.closeModal() }
+    ]
+  });
+}
+
 async function doSearch() {
   clearTimeout(searchTimeout);
-  const q = document.getElementById('searchInput').value;
+  const q = document.getElementById('globalSearch').value;
   const results = document.getElementById('searchResults');
-  if (q.length < 2) { results.classList.remove('active'); return; }
+  const recent = document.getElementById('recentSearches');
+  if (q.length < 2) { results.classList.remove('active'); if (recent) APP.showRecentSearches(recent, (sq) => { document.getElementById('globalSearch').value = sq; doSearch(); }); return; }
+  APP.saveSearch(q);
+  if (recent) { recent.style.display = 'none'; recent.innerHTML = ''; }
   searchTimeout = setTimeout(async () => {
     try {
       const data = await api('/search?q=' + encodeURIComponent(q));
@@ -197,8 +280,17 @@ async function doSearch() {
   }, 300);
 }
 
-function doExport(e) {
-  if (!APP.isLoggedIn()) { e.preventDefault(); alert('Please sign in first'); return; }
+function showExportModal() {
+  if (!APP.isLoggedIn()) { APP.toast("Sign in required", "Please sign in to export data", "warning"); return; }
+  APP.showExport("Data", [
+    { value: "reference", label: "Reference" }, { value: "origin", label: "Origin" },
+    { value: "destination", label: "Destination" }, { value: "status", label: "Status" },
+    { value: "cargo_value", label: "Value" }, { value: "created_at", label: "Created" },
+  ], (format, fields) => {
+    const url = "/api/export/shipments/" + format + "?fields=" + fields.join(",");
+    window.open(url, "_blank");
+    APP.toast("Export started", format.toUpperCase() + " download", "success");
+  });
 }
 
 document.addEventListener('click', (e) => {
@@ -206,5 +298,6 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-wrapper')) results.classList.remove('active');
 });
 </script>
+<div id="toast-container"></div>
 </body>
 </html>

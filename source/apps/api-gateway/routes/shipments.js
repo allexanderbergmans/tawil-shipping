@@ -51,4 +51,10 @@ router.get("/:id/tracking", (req, res) => {
   res.json(events);
 });
 
+router.get("/:id/chain", (req, res) => {
+  const { trackingEvent } = require("@global-logistics/core/models");
+  const result = trackingEvent.verifyChain(req.params.id);
+  res.json(result);
+});
+
 module.exports = router;

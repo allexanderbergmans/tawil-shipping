@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cargo Telemetry — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
+<div class="sidebar">
+  <div class="sidebar-header"><h1>Global Logistics &amp; Supply Chain Mesh</h1><div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button></div>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a><a data-search="true" href="/shipments.html">Shipments</a><a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/slas.html">SLAs</a><a data-search="true" href="/documents.html">Documents</a><a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a><a data-search="true" href="/audit.html">Audit Log</a><a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a><a data-search="true" href="/telemetry.html" class="active">Telemetry</a>
+  </nav>
+</div>
+<div class="main">
+  <div class="page-header"><h2>Cargo Telemetry</h2><div><span class="ws-status disconnected" id="wsStatus">Disconnected</span></div></div>
+
+  <div class="stats-grid" id="telStats"></div>
+
+  <div class="card">
+    <div class="card-header">Active Sensor Alerts</div>
+    <div id="activeAlerts"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Search Shipment Telemetry</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="telShipmentId" placeholder="Shipment ID" style="flex:1;max-width:400px">
+      <button class="btn btn-primary" onclick="viewTelemetry()">View</button>
+      <button class="btn btn-sm" onclick="generateTelemetry()">Generate Sample Data</button>
+    </div>
+    <div id="telData" style="margin-top:16px"></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => { APP.renderNav(); load(); });
+
+async function load() {
+  try {
+    const alerts = await api('/telemetry/alerts');
+    document.getElementById('telStats').innerHTML = `
+      <div class="stat-card"><div class="label">Active Alerts</div><div class="value ${alerts.length ? 'red' : 'green'}">${alerts.length}</div></div>
+      <div class="stat-card"><div class="label">Critical</div><div class="value red">${alerts.filter(a=>a.severity==='critical').length}</div></div>
+      <div class="stat-card"><div class="label">Warning</div><div class="value warning">${alerts.filter(a=>a.severity==='warning').length}</div></div>`;
+
+    document.getElementById('activeAlerts').innerHTML = alerts.length === 0 ? '<div class="empty-state">No active alerts. All cargo within thresholds.</div>' :
+      alerts.map(a => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
+        <div><span class="badge ${a.severity === 'critical' ? 'red' : 'yellow'}">${a.severity}</span>
+        <strong>${escape(a.message)}</strong> <span style="color:var(--gray-400)">— ${escape(a.reference||a.shipment_id)}</span></div>
+        <button class="btn btn-sm" onclick="resolveAlert('${a.id}')">Resolve</button>
+      </div>`).join('');
+  } catch(e) { document.getElementById('activeAlerts').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function viewTelemetry() {
+  const id = document.getElementById('telShipmentId').value.trim();
+  if (!id) { alert('Enter a shipment ID'); return; }
+  try {
+    const data = await api('/telemetry/' + id);
+    const hist = await api('/telemetry/' + id + '/history?limit=10');
+    const alerts = await api('/telemetry/' + id + '/alerts');
+    const el = document.getElementById('telData');
+    if (!data.sensor_data) { el.innerHTML = '<div class="empty-state">No telemetry data for this shipment.</div>'; return; }
+    const sd = data.sensor_data;
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px">
+      ${Object.entries(sd).filter(([k])=>k!=='gps_lat'&&k!=='gps_lng').map(([k,v])=>`<div class="card" style="text-align:center;padding:12px"><div style="font-size:24px;font-weight:700">${typeof v==='number'?v.toFixed(1):v}</div><div style="font-size:11px;color:var(--gray-400);text-transform:capitalize">${k}</div></div>`).join('')}
+    </div>
+    <div style="margin-bottom:12px;font-size:12px;color:var(--gray-500)">📍 ${sd.gps_lat?.toFixed(4)}, ${sd.gps_lng?.toFixed(4)} | Recorded: ${formatDate(data.recorded_at)}</div>
+    ${alerts.length ? `<div style="font-size:13px;font-weight:600;color:var(--danger);margin-bottom:8px">⚠ ${alerts.length} active alert(s)</div>
+      ${alerts.map(a => `<div style="font-size:12px;padding:4px 0"><span class="badge ${a.severity==='critical'?'red':'yellow'}">${a.severity}</span> ${escape(a.message)}</div>`).join('')}` : ''}
+    ${hist.length > 1 ? `<div style="margin-top:12px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">Recent Readings</div>
+      ${hist.slice(0,8).map(h => `<div style="font-size:11px;color:var(--gray-500);padding:3px 0;border-bottom:1px solid var(--gray-100)">${formatDate(h.recorded_at)} — ${h.sensor_data.temperature?.toFixed(1)}°C / ${h.sensor_data.humidity?.toFixed(0)}% / ${h.sensor_data.shock?.toFixed(2)}G</div>`).join('')}</div>` : ''}`;
+  } catch(e) { document.getElementById('telData').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function generateTelemetry() {
+  const id = document.getElementById('telShipmentId').value.trim();
+  if (!id) { alert('Enter a shipment ID first'); return; }
+  try {
+    const r = await api('/telemetry/' + id + '/generate?count=5', { method: 'POST' });
+    alert('Generated ' + r.generated + ' telemetry readings');
+    viewTelemetry(); load();
+  } catch(e) { alert(e.message); }
+}
+
+async function resolveAlert(id) {
+  try { await api('/telemetry/alerts/' + id + '/resolve', { method: 'POST' }); load(); } catch(e) { alert(e.message); }
+}
+
+function escape(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+<div id="toast-container"></div>
+</body>
+</html>

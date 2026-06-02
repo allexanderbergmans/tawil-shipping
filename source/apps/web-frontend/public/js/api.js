@@ -8,22 +8,36 @@ async function api(path, options = {}) {
   const token = (app && app.token) || localStorage.getItem("glm_token");
   if (token) headers["Authorization"] = "Bearer " + token;
 
-  const config = { headers };
+  const timeout = options.timeout || 15000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  const config = { headers, signal: controller.signal };
   if (options.body) config.body = JSON.stringify(options.body);
   if (options.method) config.method = options.method;
 
-  const res = await fetch(url, config);
-  if (res.status === 401 && app) {
-    app.clearAuth();
-    if (!location.pathname.includes("login.html")) location.href = "/login.html";
-    throw new Error("Session expired");
+  if (app && app.showLoading) app.showLoading();
+  try {
+    const res = await fetch(url, config);
+    clearTimeout(timer);
+    if (res.status === 401 && app) {
+      app.clearAuth();
+      if (!location.pathname.includes("login.html")) location.href = "/login.html";
+      throw new Error("Session expired");
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    if (options.raw) return res;
+    return res.json();
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === "AbortError") throw new Error("Request timed out");
+    throw err;
+  } finally {
+    if (app && app.hideLoading) app.hideLoading();
   }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-  if (options.raw) return res;
-  return res.json();
 }
 
 function statusBadge(status) {

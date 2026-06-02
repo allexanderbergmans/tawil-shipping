@@ -142,15 +142,15 @@ class P2PNode extends EventEmitter {
       }
 
       case "tracking_event":
-        this.emit("message:tracking_event", msg.payload);
+        this.emit("message:tracking_event", msg.payload, msg.from);
         break;
 
       case "compliance_alert":
-        this.emit("message:compliance_alert", msg.payload);
+        this.emit("message:compliance_alert", msg.payload, msg.from);
         break;
 
       case "document_shared":
-        this.emit("message:document_shared", msg.payload);
+        this.emit("message:document_shared", msg.payload, msg.from);
         break;
 
       case "shipment_query": {
@@ -166,6 +166,22 @@ class P2PNode extends EventEmitter {
       case "shipment_response":
         this.emit("message:shipment_response", msg.payload);
         break;
+
+      case "db_snapshot_request":
+        this.emit("message:db_snapshot_request", msg.payload, msg.from);
+        break;
+
+      case "db_snapshot_chunk":
+        this.emit("message:db_snapshot_chunk", msg.payload, msg.from);
+        break;
+
+      case "db_row_sync":
+        this.emit("message:db_row_sync", msg.payload, msg.from);
+        break;
+
+      case "db_sync_ack":
+        this.emit("message:db_sync_ack", msg.payload, msg.from);
+        break;
     }
   }
 
@@ -173,6 +189,11 @@ class P2PNode extends EventEmitter {
     for (const [id, peer] of this.peers) {
       this._send(peer.ws, type, payload);
     }
+  }
+
+  sendToPeer(nodeId, type, payload) {
+    const peer = this.peers.get(nodeId);
+    if (peer) this._send(peer.ws, type, payload);
   }
 
   queryShipment(shipmentId, timeout = 5000) {

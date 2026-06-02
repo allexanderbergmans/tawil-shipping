@@ -1,4 +1,4 @@
-const { getDb } = require("../db");
+const { getDb, events } = require("../db");
 const crypto = require("crypto");
 
 function generateId(prefix) {
@@ -51,7 +51,9 @@ const create = (data) => {
     data.weight_kg, data.volume_m3, data.shipper_name, data.shipper_country,
     data.consignee_name, data.consignee_country, data.vessel_name, data.vessel_imo,
     data.port_of_loading, data.port_of_discharge, data.estimated_departure, data.estimated_arrival);
-  return getById(id);
+  const created = getById(id);
+  events.emit("shipment:updated", created);
+  return created;
 };
 
 const updateStatus = (id, status, extras = {}) => {
@@ -66,7 +68,9 @@ const updateStatus = (id, status, extras = {}) => {
   }
   params.push(id);
   db.prepare(`UPDATE shipments SET ${fields.join(", ")} WHERE id = ?`).run(...params);
-  return getById(id);
+  const updated = getById(id);
+  events.emit("shipment:updated", updated);
+  return updated;
 };
 
 module.exports = { all, count, getById, getByReference, create, updateStatus };

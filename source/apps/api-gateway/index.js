@@ -20,6 +20,12 @@ const adminRoutes = require("./routes/admin");
 const webhookRoutes = require("./routes/webhooks");
 const exportRoutes = require("./routes/exports");
 const bulkRoutes = require("./routes/bulk");
+const riskRoutes = require("./routes/risk");
+const slaRoutes = require("./routes/sla");
+const carbonRoutes = require("./routes/carbon");
+const optimizeRoutes = require("./routes/routes-optimizer");
+const telemetryRoutes = require("./routes/telemetry");
+const tradeLaneRoutes = require("./routes/trade-lanes");
 
 function createApp() {
   const app = express();
@@ -45,6 +51,12 @@ function createApp() {
   app.use("/api/webhooks", webhookRoutes);
   app.use("/api/export", exportRoutes);
   app.use("/api/bulk", bulkRoutes);
+  app.use("/api/risk", riskRoutes);
+  app.use("/api/sla", slaRoutes);
+  app.use("/api/carbon", carbonRoutes);
+  app.use("/api/optimize", optimizeRoutes);
+  app.use("/api/telemetry", telemetryRoutes);
+  app.use("/api/trade-lanes", tradeLaneRoutes);
 
   app.get("/api/network", (req, res) => {
     try {
@@ -53,6 +65,29 @@ function createApp() {
       if (!n || !n.running) return res.json({ running: false, nodeId: null, port: null, peers: [], peerCount: 0 });
       res.json({ running: true, nodeId: n.nodeId, port: n.port, peers: n.getPeers(), peerCount: n.getPeerCount() });
     } catch { res.json({ running: false, nodeId: null, port: null, peers: [], peerCount: 0 }); }
+  });
+
+  app.get("/api/network/sync", (req, res) => {
+    try {
+      const p2p = require("@global-logistics/p2p-network");
+      res.json(p2p.getSyncState());
+    } catch { res.json({ error: "P2P not available" }); }
+  });
+
+  app.post("/api/network/sync/trigger", (req, res) => {
+    try {
+      const p2p = require("@global-logistics/p2p-network");
+      const result = p2p.triggerSync();
+      res.json(result);
+    } catch { res.status(500).json({ error: "P2P not available" }); }
+  });
+
+  app.get("/api/network/sync/log", (req, res) => {
+    try {
+      const p2p = require("@global-logistics/p2p-network");
+      const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+      res.json(p2p.getSyncLog(limit));
+    } catch { res.json([]); }
   });
 
   app.get("/api/search", (req, res) => {

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLAs — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
+  </div>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a>
+    <a data-search="true" href="/shipments.html">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/slas.html" class="active">SLAs</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/audit.html">Audit Log</a>
+    <a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
+  </nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Service Level Agreements</h2>
+    <div style="display:flex;gap:8px"><span class="ws-status disconnected" id="wsStatus">Disconnected</span><button class="btn btn-primary btn-sm" onclick="showCreate()">+ New SLA</button><button class="btn btn-sm" onclick="detectBreaches()">Detect Breaches</button></div>
+  </div>
+
+  <div class="stats-grid" id="slaStats"></div>
+
+  <div class="card" id="createForm" style="display:none">
+    <div class="card-header">Create SLA</div>
+    <form onsubmit="createSLA(event)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group"><label>Name</label><input name="name" required></div>
+        <div class="form-group"><label>Transit Hours</label><input name="transit_hours" type="number" value="48" required></div>
+        <div class="form-group"><label>Origin (leave blank for all)</label><input name="origin" placeholder="e.g. Cairo"></div>
+        <div class="form-group"><label>Destination (leave blank for all)</label><input name="destination" placeholder="e.g. Rotterdam"></div>
+        <div class="form-group"><label>Status (blank for all)</label><input name="status" placeholder="e.g. in_transit"></div>
+        <div class="form-group"><label>Penalty per hour ($)</label><input name="penalty_per_hour" type="number" value="0"></div>
+        <div class="form-group"><label>Penalty cap ($)</label><input name="penalty_cap" type="number" value="0"></div>
+        <div class="form-group"><label>Description</label><input name="description"></div>
+      </div>
+      <div style="margin-top:16px"><button type="submit" class="btn btn-primary">Create</button> <button type="button" class="btn" onclick="hideCreate()">Cancel</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>SLA Definitions</span>
+      <label style="font-size:13px;display:flex;align-items:center;gap:4px"><input type="checkbox" onchange="load()" id="activeOnly"> Active only</label>
+    </div>
+    <div id="slaList"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Recent Breaches</div>
+    <div id="breachList"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => { APP.renderNav(); load(); });
+
+async function load() {
+  try {
+    const active = document.getElementById('activeOnly').checked;
+    const slas = await api('/sla?active=' + active);
+    document.getElementById('slaList').innerHTML = slas.length === 0 ? '<div class="empty-state">No SLAs defined.</div>' :
+      `<table><thead><tr><th>Name</th><th>Origin</th><th>Dest</th><th>Transit (h)</th><th>Penalty/h</th><th>Cap</th><th>Active</th><th></th></tr></thead><tbody>
+      ${slas.map(s => `<tr>
+        <td><strong>${escape(s.name)}</strong></td>
+        <td>${s.origin || 'All'}</td><td>${s.destination || 'All'}</td>
+        <td>${s.transit_hours}</td>
+        <td>${s.penalty_per_hour ? '$'+s.penalty_per_hour : '-'}</td>
+        <td>${s.penalty_cap ? '$'+s.penalty_cap : '-'}</td>
+        <td><span class="badge ${s.is_active ? 'green' : 'gray'}">${s.is_active ? 'Yes' : 'No'}</span></td>
+        <td><button class="btn btn-sm" onclick="toggleSLA('${s.id}', ${s.is_active ? 0 : 1})">${s.is_active ? 'Deactivate' : 'Activate'}</button></td>
+      </tr>`).join('')}</tbody></table>`;
+
+    document.getElementById('slaStats').innerHTML = `
+      <div class="stat-card"><div class="label">Total SLAs</div><div class="value blue">${slas.length}</div></div>
+      <div class="stat-card"><div class="label">Active</div><div class="value green">${slas.filter(s=>s.is_active).length}</div></div>
+      <div class="stat-card"><div class="label">With Penalties</div><div class="value warning">${slas.filter(s=>s.penalty_per_hour > 0).length}</div></div>
+    `;
+  } catch(e) { document.getElementById('slaList').innerHTML = `<div class="error">${e.message}</div>`; }
+
+  try {
+    const br = await api('/sla/breaches?limit=10');
+    document.getElementById('breachList').innerHTML = br.length === 0 ? '<div class="empty-state">No breaches.</div>' :
+      `<table><thead><tr><th>Shipment</th><th>SLA</th><th>Elapsed</th><th>Penalty</th><th>Detected</th></tr></thead><tbody>
+      ${br.map(b => `<tr><td><a data-search="true" href="/shipment.html?id=${b.shipment_id}">${escape(b.shipment_ref||b.shipment_id).slice(0,20)}</a></td><td>${escape(b.sla_name||'')}</td><td>${Math.round(b.elapsed_hours)}h / ${b.transit_hours}h</td><td>${b.penalty ? '$'+b.penalty : '-'}</td><td>${formatDate(b.detected_at)}</td></tr>`).join('')}</tbody></table>`;
+  } catch(e) { document.getElementById('breachList').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function toggleSLA(id, active) {
+  try { await api('/sla/' + id, { method: 'PUT', body: { is_active: active } }); load(); } catch(e) { alert(e.message); }
+}
+
+async function detectBreaches() {
+  try {
+    const r = await api('/sla/detect', { method: 'POST' });
+    alert(r.count + ' new breach(es) detected');
+    load();
+  } catch(e) { alert(e.message); }
+}
+
+function showCreate() { document.getElementById('createForm').style.display = 'block'; }
+function hideCreate() { document.getElementById('createForm').style.display = 'none'; }
+
+async function createSLA(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = Object.fromEntries(fd.entries());
+  Object.keys(data).forEach(k => { if (data[k] === '') delete data[k]; });
+  if (data.transit_hours) data.transit_hours = parseFloat(data.transit_hours);
+  if (data.penalty_per_hour) data.penalty_per_hour = parseFloat(data.penalty_per_hour);
+  if (data.penalty_cap) data.penalty_cap = parseFloat(data.penalty_cap);
+  try { await api('/sla', { method: 'POST', body: data }); hideCreate(); load(); } catch(e) { alert(e.message); }
+}
+
+function escape(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+<div id="toast-container"></div>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Lanes — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
+<div class="sidebar">
+  <div class="sidebar-header"><h1>Global Logistics &amp; Supply Chain Mesh</h1><div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button></div>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a><a data-search="true" href="/shipments.html">Shipments</a><a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/slas.html">SLAs</a><a data-search="true" href="/documents.html">Documents</a><a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a><a data-search="true" href="/audit.html">Audit Log</a><a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a><a data-search="true" href="/telemetry.html">Telemetry</a><a data-search="true" href="/lanes.html" class="active">Trade Lanes</a>
+  </nav>
+</div>
+<div class="main">
+  <div class="page-header"><h2>Trade Lane Analytics</h2><div><span class="ws-status disconnected" id="wsStatus">Disconnected</span></div></div>
+
+  <div id="laneStats" class="stats-grid"></div>
+
+  <div id="laneDetail" style="display:none;margin-bottom:20px">
+    <div class="card">
+      <div class="card-header" id="laneDetailTitle"></div>
+      <div id="laneDetailContent"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">All Trade Lanes</div>
+    <div id="laneTable"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => { APP.renderNav(); load(); });
+
+async function load() {
+  try {
+    const lanes = await api('/trade-lanes');
+    document.getElementById('laneStats').innerHTML = `
+      <div class="stat-card"><div class="label">Active Lanes</div><div class="value blue">${lanes.length}</div></div>
+      <div class="stat-card"><div class="label">Total Shipments</div><div class="value">${lanes.reduce((a,l)=>a+l.total_shipments,0)}</div></div>
+      <div class="stat-card"><div class="label">Healthy Lanes</div><div class="value green">${lanes.filter(l=>l.health==='good').length}</div></div>
+      <div class="stat-card"><div class="label">Troubled Lanes</div><div class="value red">${lanes.filter(l=>l.health==='poor').length}</div></div>`;
+
+    document.getElementById('laneTable').innerHTML = lanes.length === 0 ? '<div class="empty-state">No trade lanes yet.</div>' :
+      `<table><thead><tr><th>Origin</th><th>Destination</th><th>Shipments</th><th>Issues</th><th>Issue Rate</th><th>Total Value</th><th>Health</th><th></th></tr></thead><tbody>
+      ${lanes.map(l => `<tr>
+        <td><strong>${escape(l.origin)}</strong></td><td><strong>${escape(l.destination)}</strong></td>
+        <td>${l.total_shipments}</td><td>${l.issues}</td>
+        <td><span class="badge ${l.issue_rate < 10 ? 'green' : l.issue_rate < 30 ? 'yellow' : 'red'}">${l.issue_rate}%</span></td>
+        <td>${formatCurrency(l.total_value)}</td>
+        <td><span class="badge ${l.health === 'good' ? 'green' : l.health === 'fair' ? 'yellow' : 'red'}">${l.health}</span></td>
+        <td><button class="btn btn-sm btn-primary" onclick="showDetail('${escape(l.origin)}','${escape(l.destination)}')">Analyze</button></td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch(e) { document.getElementById('laneTable').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function showDetail(origin, destination) {
+  try {
+    const d = await api('/trade-lanes/detail?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(destination));
+    document.getElementById('laneDetail').style.display = 'block';
+    document.getElementById('laneDetailTitle').textContent = `${d.origin} → ${d.destination}`;
+
+    const el = document.getElementById('laneDetailContent');
+    let html = `<div class="stats-grid">
+      <div class="stat-card"><div class="label">Total Shipments</div><div class="value blue">${d.total_shipments}</div></div>
+      ${d.avg_transit_days ? `<div class="stat-card"><div class="label">Avg Transit</div><div class="value">${d.avg_transit_days} days</div></div>` : ''}
+      ${d.carriers.length ? `<div class="stat-card"><div class="label">Carriers</div><div class="value" style="font-size:16px">${d.carriers.length}</div></div>` : ''}
+    </div>`;
+
+    if (d.carriers.length) {
+      html += `<div style="margin-top:12px;font-size:13px"><strong>Top Carriers:</strong></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        ${d.carriers.map(c => `<span class="badge blue">${escape(c.carrier)} (${c.trips})</span>`).join('')}</div>`;
+    }
+
+    if (d.timeline.length) {
+      html += `<div style="margin-top:16px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">30-Day Activity</div>
+        <div style="display:flex;gap:3px;align-items:end;height:60px">
+        ${d.timeline.map(t => `<div style="flex:1;background:var(--primary);height:${Math.max(4, t.events * 10)}px;border-radius:3px;min-width:12px" title="${t.day}: ${t.events} events"></div>`).join('')}</div></div>`;
+    }
+
+    if (d.shipments.length) {
+      html += `<div style="margin-top:16px"><div style="font-size:13px;font-weight:600;margin-bottom:4px">Recent Shipments</div>
+        <table><thead><tr><th>Ref</th><th>Status</th><th>Value</th><th>Created</th></tr></thead><tbody>
+        ${d.shipments.slice(0,10).map(s => `<tr><td><a data-search="true" href="/shipment.html?id=${s.id}">${escape(s.reference)}</a></td><td>${statusBadge(s.status)}</td><td>${formatCurrency(s.cargo_value)}</td><td>${formatDate(s.created_at)}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    el.innerHTML = html;
+  } catch(e) { alert(e.message); }
+}
+
+function escape(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+<div id="toast-container"></div>
+</body>
+</html>

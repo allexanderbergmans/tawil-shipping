@@ -8,25 +8,36 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Global Logistics &amp; Supply Chain Mesh</h1>
     <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
   </div>
-  <nav class="sidebar-nav">
-    <a href="/">Dashboard</a>
-    <a href="/shipments.html">Shipments</a>
-    <a href="/compliance.html">Compliance</a>
-    <a href="/documents.html">Documents</a>
-    <a href="/notifications.html">Notifications</a>
-    <a href="/network.html">Network</a>
-    <a href="/audit.html" class="active">Audit Log</a>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a>
+    <a data-search="true" href="/shipments.html">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/slas.html">SLAs</a>
+    <a data-search="true" href="/audit.html" class="active">Audit Log</a>
+    <a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
   </nav>
 </div>
 <div class="main">
   <div class="page-header">
     <h2>Audit Log</h2>
-    <div><span class="ws-status disconnected">Offline</span></div>
+    <div><span class="ws-status disconnected" id="wsStatus">Disconnected</span></div>
   </div>
 
   <div class="filter-bar">
@@ -134,5 +145,6 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
+<div id="toast-container"></div>
 </body>
 </html>

@@ -187,11 +187,77 @@ function initSchema() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS route_catalog (
+      id TEXT PRIMARY KEY,
+      origin TEXT NOT NULL,
+      destination TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      transit_days REAL,
+      cost_per_kg REAL,
+      co2_per_kg REAL,
+      reliability REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS telemetry (
+      id TEXT PRIMARY KEY,
+      shipment_id TEXT REFERENCES shipments(id) ON DELETE CASCADE,
+      sensor_data TEXT,
+      recorded_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS telemetry_alerts (
+      id TEXT PRIMARY KEY,
+      shipment_id TEXT REFERENCES shipments(id) ON DELETE CASCADE,
+      sensor TEXT NOT NULL,
+      value REAL,
+      message TEXT,
+      severity TEXT DEFAULT 'warning',
+      resolved INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS slas (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      origin TEXT DEFAULT '',
+      destination TEXT DEFAULT '',
+      status TEXT DEFAULT '',
+      transit_hours REAL NOT NULL DEFAULT 48,
+      penalty_per_hour REAL DEFAULT 0,
+      penalty_cap REAL DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      description TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sla_breaches (
+      id TEXT PRIMARY KEY,
+      shipment_id TEXT REFERENCES shipments(id) ON DELETE CASCADE,
+      sla_id TEXT REFERENCES slas(id) ON DELETE CASCADE,
+      elapsed_hours REAL,
+      transit_hours REAL,
+      penalty REAL DEFAULT 0,
+      detected_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id TEXT PRIMARY KEY,
+      peer_node_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      details TEXT DEFAULT '{}',
+      status TEXT DEFAULT 'completed',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
     CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
     CREATE INDEX IF NOT EXISTS idx_tracking_shipment ON tracking_events(shipment_id);
     CREATE INDEX IF NOT EXISTS idx_documents_shipment ON documents(shipment_id);
+    CREATE INDEX IF NOT EXISTS idx_sync_log_created ON sync_log(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_sync_log_peer ON sync_log(peer_node_id);
   `);
 
   migrate();
@@ -201,12 +267,22 @@ function initSchema() {
 
 function migrate() {
   const migrations = [
+    ["tracking_events", "previous_hash", "TEXT"],
+    ["tracking_events", "block_hash", "TEXT"],
+    ["tracking_events", "block_number", "INTEGER"],
     ["notifications", "user_id", "TEXT REFERENCES users(id)"],
     ["compliance_rules", "min_value", "REAL"],
     ["compliance_rules", "max_value", "REAL"],
     ["compliance_rules", "updated_at", "TEXT DEFAULT (datetime('now'))"],
     ["compliance_checks", "checked_by", "TEXT REFERENCES users(id)"],
+    ["compliance_checks", "updated_at", "TEXT DEFAULT (datetime('now'))"],
     ["documents", "template_id", "TEXT REFERENCES document_templates(id)"],
+    ["documents", "updated_at", "TEXT DEFAULT (datetime('now'))"],
+    ["notifications", "updated_at", "TEXT DEFAULT (datetime('now'))"],
+    ["route_catalog", "updated_at", "TEXT DEFAULT (datetime('now'))"],
+    ["sla_breaches", "updated_at", "TEXT DEFAULT (datetime('now'))"],
+    ["telemetry", "updated_at", "TEXT DEFAULT (datetime('now'))"],
+    ["telemetry_alerts", "updated_at", "TEXT DEFAULT (datetime('now'))"],
   ];
   for (const [table, column, colDef] of migrations) {
     try {

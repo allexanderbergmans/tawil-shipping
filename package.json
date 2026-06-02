@@ -15,7 +15,13 @@
     "source/apps/cli",
     "source/apps/p2p-network",
     "source/apps/auth",
-    "source/apps/audit"
+    "source/apps/audit",
+    "source/apps/risk-engine",
+    "source/apps/sla-engine",
+    "source/apps/carbon-tracker",
+    "source/apps/route-optimizer",
+    "source/apps/telemetry",
+    "source/apps/trade-lanes"
   ],
   "scripts": {
     "start": "node source/index.js",

@@ -10,6 +10,10 @@ const MESSAGE_TYPES = [
   "peer_list",
   "ping",
   "pong",
+  "db_snapshot_request",
+  "db_snapshot_chunk",
+  "db_row_sync",
+  "db_sync_ack",
 ];
 
 function createMessage(type, payload) {

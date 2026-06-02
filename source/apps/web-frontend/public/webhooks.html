@@ -7,16 +7,23 @@
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Global Logistics &amp; Supply Chain Mesh</h1>
     <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
   </div>
-  <nav class="sidebar-nav"></nav>
+  <nav class="sidebar-nav" data-search-group="Navigation"></nav>
 </div>
 <div class="main">
   <div class="page-header">
     <h2>Webhooks</h2>
+    <span class="ws-status disconnected" id="wsStatus">Disconnected</span>
     <button class="btn btn-primary" onclick="showCreate()">+ New Webhook</button>
   </div>
   <div id="webhookList"><div class="loading">Loading...</div></div>
@@ -136,5 +143,6 @@ document.getElementById('evtAll').addEventListener('change', function() {
   document.querySelectorAll('.wh-ev').forEach(c => c.checked = this.checked);
 });
 </script>
+<div id="toast-container"></div>
 </body>
 </html>

@@ -7,24 +7,37 @@
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Global Logistics &amp; Supply Chain Mesh</h1>
     <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
   </div>
-  <nav class="sidebar-nav">
-    <a href="/">Dashboard</a>
-    <a href="/shipments.html" class="active">Shipments</a>
-    <a href="/compliance.html">Compliance</a>
-    <a href="/documents.html">Documents</a>
-    <a href="/notifications.html">Notifications</a>
-    <a href="/network.html">Network</a>
-  <a href="/audit.html">Audit Log</a></nav>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a>
+    <a data-search="true" href="/shipments.html" class="active">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/slas.html">SLAs</a>
+    <a data-search="true" href="/audit.html">Audit Log</a>
+    <a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
+  </nav>
 </div>
 <div class="main" id="app">
   <div class="page-header">
     <h2 id="shipmentTitle">Shipment</h2>
-    <a href="/shipments.html" class="btn">&larr; Back</a>
+    <span class="ws-status disconnected" id="wsStatus">Disconnected</span>
+    <a data-search="true" href="/shipments.html" class="btn">&larr; Back</a>
   </div>
   <div id="shipmentContent"><div class="loading">Loading...</div></div>
 </div>
@@ -34,6 +47,7 @@
 <script src="/js/app.js"></script>
 <script>
 const id = new URLSearchParams(location.search).get('id');
+let _shipment = null;
 
 APP.checkAuth().then(() => {
   APP.renderNav();
@@ -44,21 +58,29 @@ async function load() {
   if (!id) { document.getElementById('shipmentContent').innerHTML = '<div class="error">No shipment ID.</div>'; return; }
   try {
     const s = await api('/shipments/' + id);
+    _shipment = s;
     document.getElementById('shipmentTitle').textContent = 'Shipment ' + s.reference;
     document.getElementById('shipmentContent').innerHTML = `
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
         <div>
           <div class="card">
-            <div class="card-header">Shipment Info</div>
+            <div class="card-header">Shipment Info <button class="btn btn-sm" onclick="toggleShipmentEdit()" id="editToggleBtn">✏️ Edit</button></div>
+            <div id="shipmentFields">
             ${[
-              ['Status', statusBadge(s.status)], ['Reference', s.reference],
-              ['Origin', s.origin], ['Destination', s.destination],
-              ['Cargo', s.cargo_description || '\u2014'], ['Value', formatCurrency(s.cargo_value)],
-              ['Shipper', (s.shipper_name||'\u2014') + (s.shipper_country ? ' ('+s.shipper_country+')' : '')],
-              ['Consignee', (s.consignee_name||'\u2014') + (s.consignee_country ? ' ('+s.consignee_country+')' : '')],
-              ['Port of Loading', s.port_of_loading||'\u2014'], ['Port of Discharge', s.port_of_discharge||'\u2014'],
-              ['Est. Departure', formatDate(s.estimated_departure)], ['Est. Arrival', formatDate(s.estimated_arrival)],
-            ].map(([l,v]) => `<div class="detail-row"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('')}
+              ['Status', 'status', statusBadge(s.status)],
+              ['Reference', 'reference', s.reference],
+              ['Origin', 'origin', s.origin],
+              ['Destination', 'destination', s.destination],
+              ['Cargo Description', 'cargo_description', s.cargo_description || '—'],
+              ['Cargo Value', 'cargo_value', formatCurrency(s.cargo_value)],
+              ['Shipper', 'shipper_name', (s.shipper_name||'—') + (s.shipper_country ? ' ('+s.shipper_country+')' : '')],
+              ['Consignee', 'consignee_name', (s.consignee_name||'—') + (s.consignee_country ? ' ('+s.consignee_country+')' : '')],
+              ['Port of Loading', 'port_of_loading', s.port_of_loading||'—'],
+              ['Port of Discharge', 'port_of_discharge', s.port_of_discharge||'—'],
+              ['Est. Departure', 'estimated_departure', formatDate(s.estimated_departure)],
+              ['Est. Arrival', 'estimated_arrival', formatDate(s.estimated_arrival)],
+            ].map(([l,k,v]) => `<div class="detail-row editable" data-key="${k}"><div class="label">${l}</div><div class="value" id="dv_${k}">${v}</div></div>`).join('')}
+            </div>
           </div>
           <div class="card">
             <div class="card-header">Tracking Timeline</div>
@@ -83,10 +105,30 @@ async function load() {
             <div class="card-header">Documents</div>
             <div id="documents"><div class="loading">Loading...</div></div>
           </div>
+          <div class="card">
+            <div class="card-header">Risk Score</div>
+            <div id="riskScore"><div class="loading">Scoring...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header">Carbon Footprint</div>
+            <div id="carbonFootprint"><div class="loading">Calculating...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header">Chain of Custody</div>
+            <div id="chainOfCustody"><div class="loading">Verifying...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header">SLA Compliance</div>
+            <div id="slaCheck"><div class="loading">Checking...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center"><span>IoT Telemetry</span><button class="btn btn-sm" onclick="genTelemetry()">Simulate</button></div>
+            <div id="cargoTelemetry"><div class="loading">Loading...</div></div>
+          </div>
         </div>
       </div>
     `;
-    loadTimeline(); loadCompliance(); loadDocuments();
+    loadTimeline(); loadCompliance(); loadDocuments(); loadRisk(); loadCarbon(); loadChain(); loadSLA(); loadTelemetry();
   } catch(e) { document.getElementById('shipmentContent').innerHTML = `<div class="error">${e.message}</div>`; }
 }
 
@@ -123,9 +165,98 @@ async function loadDocuments() {
       `<div style="padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:13px">
         <strong>${d.title || d.type}</strong> <span class="badge gray">${d.format}</span>
         <div style="color:var(--gray-400);font-size:12px">${formatDate(d.created_at)}</div>
+        <button class="btn btn-sm" style="margin-top:4px" onclick="APP.showDocumentPreview('${d.id}', '${(d.title || d.type || '').replace(/'/g, "\\'")}')">Preview</button>
       </div>`
     ).join('');
   } catch(e) { document.getElementById('documents').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+async function loadRisk() {
+  try {
+    const r = await api('/risk/' + id);
+    const colors = { low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#dc2626' };
+    document.getElementById('riskScore').innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="width:60px;height:60px;border-radius:50%;background:${colors[r.level]||'#6b7280'};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:20px">${r.score}</div>
+        <div><div style="font-weight:600;font-size:16px;text-transform:capitalize">${r.level}</div><div style="font-size:12px;color:var(--gray-500)}">Risk Score</div></div>
+      </div>
+      ${(r.factors||[]).map(f => `<div style="font-size:12px;padding:3px 0;border-bottom:1px solid var(--gray-100)"><strong>${f.factor}:</strong> ${f.detail} <span style="color:var(--gray-400)">(+${f.weight})</span></div>`).join('')}
+      ${(!r.factors||r.factors.length===0) ? '<div style="font-size:12px;color:var(--gray-400)">No risk factors identified</div>' : ''}`;
+  } catch(e) { document.getElementById('riskScore').innerHTML = `<div style="font-size:12px;color:var(--gray-400)">${e.message}</div>`; }
+}
+
+async function loadCarbon() {
+  try {
+    const c = await api('/carbon/' + id);
+    document.getElementById('carbonFootprint').innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="text-align:center"><div style="font-size:24px;font-weight:700;color:var(--success)">${c.co2_tonnes}</div><div style="font-size:11px;color:var(--gray-400)">t CO₂</div></div>
+        <div style="text-align:center"><div style="font-size:24px;font-weight:700;color:var(--primary)">${c.distance_km.toLocaleString()}</div><div style="font-size:11px;color:var(--gray-400)">km</div></div>
+        <div style="text-align:center"><div style="font-size:24px;font-weight:700;color:var(--warning)">$${c.offset_cost_usd}</div><div style="font-size:11px;color:var(--gray-400)">Offset Cost</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--gray-500);margin-top:8px">Mode: <span class="badge blue">${c.mode}</span> | Factor: ${c.emission_factor} kg CO₂/t·km</div>`;
+  } catch(e) { document.getElementById('carbonFootprint').innerHTML = `<div style="font-size:12px;color:var(--gray-400)">${e.message}</div>`; }
+}
+
+async function loadChain() {
+  try {
+    const ch = await api('/shipments/' + id + '/chain');
+    const total = ch.length;
+    const validCount = ch.chain ? ch.chain.filter(e => e.valid).length : 0;
+    const status = ch.valid ? 'Intact' : 'Tampered';
+    const statusColor = ch.valid ? 'var(--success)' : 'var(--danger)';
+    document.getElementById('chainOfCustody').innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="text-align:center"><div style="font-size:24px;font-weight:700;color:${statusColor}">${status}</div><div style="font-size:11px;color:var(--gray-400)">Chain Status</div></div>
+        <div style="text-align:center"><div style="font-size:24px;font-weight:700">${validCount}/${total}</div><div style="font-size:11px;color:var(--gray-400)">Valid Blocks</div></div>
+      </div>
+      <div style="margin-top:8px;max-height:150px;overflow-y:auto;font-size:11px;font-family:monospace">
+        ${(ch.chain||[]).slice(-5).reverse().map(e =>
+          `<div style="padding:4px 0;border-bottom:1px solid var(--gray-100)">
+            <span style="color:${e.valid ? 'var(--success)' : 'var(--danger)'}">${e.valid ? '✓' : '✗'}</span>
+            #${e.block_number} ${e.status} — <span style="color:var(--gray-400)">${e.block_hash.slice(0,12)}…</span>
+          </div>`
+        ).join('')}
+      </div>`;
+  } catch(e) { document.getElementById('chainOfCustody').innerHTML = `<div style="font-size:12px;color:var(--gray-400)">${e.message}</div>`; }
+}
+
+async function loadSLA() {
+  try {
+    const sla = await api('/sla/check/' + id);
+    if (!sla.length) { document.getElementById('slaCheck').innerHTML = '<div style="font-size:12px;color:var(--gray-400)">No applicable SLAs</div>'; return; }
+    document.getElementById('slaCheck').innerHTML = sla.map(s => `
+      <div style="padding:6px 0;border-bottom:1px solid var(--gray-100);font-size:12px">
+        <div style="display:flex;justify-content:space-between">
+          <strong>${s.sla_name}</strong>
+          <span class="badge ${s.breach ? 'red' : 'green'}">${s.breach ? 'BREACH' : 'OK'}</span>
+        </div>
+        <div style="color:var(--gray-500);margin-top:2px">${s.elapsed_hours}/${s.transit_hours}h ${s.breach ? '| Penalty: $'+s.penalty : ''}</div>
+      </div>
+    `).join('');
+  } catch(e) { document.getElementById('slaCheck').innerHTML = `<div style="font-size:12px;color:var(--gray-400)">${e.message}</div>`; }
+}
+
+async function loadTelemetry() {
+  try {
+    const tel = await api('/telemetry/' + id);
+    const alerts = await api('/telemetry/' + id + '/alerts');
+    if (!tel.sensor_data) { document.getElementById('cargoTelemetry').innerHTML = '<div style="font-size:12px;color:var(--gray-400)">No telemetry. Click Simulate to generate.</div>'; return; }
+    const sd = tel.sensor_data;
+    document.getElementById('cargoTelemetry').innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="text-align:center;flex:1;min-width:60px"><div style="font-size:18px;font-weight:700">${sd.temperature?.toFixed(1)}°C</div><div style="font-size:10px;color:var(--gray-400)">Temp</div></div>
+        <div style="text-align:center;flex:1;min-width:60px"><div style="font-size:18px;font-weight:700">${sd.humidity?.toFixed(0)}%</div><div style="font-size:10px;color:var(--gray-400)">Humidity</div></div>
+        <div style="text-align:center;flex:1;min-width:60px"><div style="font-size:18px;font-weight:700">${sd.shock?.toFixed(2)}G</div><div style="font-size:10px;color:var(--gray-400)">Shock</div></div>
+      </div>
+      ${alerts.length ? '<div style="font-size:11px;color:var(--danger);margin-top:4px">⚠ ' + alerts.length + ' active alert(s)</div>' : ''}
+      <div style="font-size:10px;color:var(--gray-400);margin-top:4px">📍 ${sd.gps_lat?.toFixed(2)}, ${sd.gps_lng?.toFixed(2)}</div>`;
+  } catch(e) { document.getElementById('cargoTelemetry').innerHTML = `<div style="font-size:12px;color:var(--gray-400)">${e.message}</div>`; }
+}
+
+async function genTelemetry() {
+  try { await api('/telemetry/' + id + '/generate?count=3', { method: 'POST' }); loadTelemetry(); }
+  catch(e) { alert(e.message); }
 }
 
 async function recordTrack() {
@@ -158,6 +289,65 @@ async function approveShipment() {
     load();
   } catch(e) { alert(e.message); }
 }
+
+/* ── Inline editing ── */
+let _editMode = false;
+function toggleShipmentEdit() {
+  _editMode = !_editMode;
+  document.getElementById('editToggleBtn').textContent = _editMode ? '💾 Save' : '✏️ Edit';
+  if (!_editMode) { saveShipmentEdit(); return; }
+  const s = _shipment;
+  if (!s) return;
+  const statuses = ['pending','in_transit','delayed','customs_hold','cleared','delivered','exception'];
+  document.querySelectorAll('.detail-row.editable').forEach(row => {
+    const key = row.dataset.key;
+    const valEl = row.querySelector('.value');
+    const cur = s[key] != null ? String(s[key]) : '';
+    if (key === 'status') {
+      valEl.innerHTML = '<select id="ie_' + key + '">' + statuses.map(st => '<option value="' + st + '"' + (st === cur ? ' selected' : '') + '>' + st + '</option>').join('') + '</select>';
+    } else if (key === 'cargo_value') {
+      valEl.innerHTML = '<input id="ie_' + key + '" type="number" step="0.01" value="' + cur.replace(/[^0-9.]/g,'') + '">';
+    } else {
+      valEl.innerHTML = '<input id="ie_' + key + '" value="' + cur.replace(/"/g, '&quot;') + '">';
+    }
+  });
+}
+
+async function saveShipmentEdit() {
+  const s = _shipment;
+  if (!s) return;
+  const changes = {};
+  document.querySelectorAll('.detail-row.editable').forEach(row => {
+    const key = row.dataset.key;
+    const inp = document.getElementById('ie_' + key);
+    if (inp) {
+      const val = inp.value;
+      const orig = String(s[key] != null ? s[key] : '');
+      if (val !== orig) {
+        if (key === 'cargo_value') changes[key] = parseFloat(val) || 0;
+        else changes[key] = val;
+      }
+    }
+  });
+  if (Object.keys(changes).length === 0) {
+    document.querySelectorAll('#shipmentFields .detail-row.editable').forEach(row => {
+      const key = row.dataset.key;
+      const val = s[key];
+      row.querySelector('.value').textContent = key === 'status' ? statusBadge(val) : key === 'cargo_value' ? formatCurrency(val) : (val != null ? String(val) : '—');
+    });
+    return;
+  }
+  try {
+    await api('/shipments/' + id, { method: 'PATCH', body: changes });
+    APP.toast("Shipment updated", Object.keys(changes).length + " field(s) changed", "success");
+    load();
+  } catch(e) {
+    APP.toast("Update failed", e.message, "error");
+    _editMode = true;
+    document.getElementById('editToggleBtn').textContent = '✏️ Edit';
+  }
+}
 </script>
+<div id="toast-container"></div>
 </body>
 </html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Risk Assessment — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>Global Logistics &amp; Supply Chain Mesh</h1>
+    <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
+  </div>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a>
+    <a data-search="true" href="/shipments.html">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/slas.html">SLAs</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/audit.html">Audit Log</a>
+    <a data-search="true" href="/risk.html" class="active">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
+  </nav>
+</div>
+<div class="main">
+  <div class="page-header">
+    <h2>Risk Assessment</h2>
+    <div><span class="ws-status disconnected" id="wsStatus">Disconnected</span></div>
+  </div>
+
+  <div class="stats-grid" id="riskStats"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+    <div class="card"><div class="card-header">Risk Distribution</div><div class="chart-wrap" style="height:200px"><canvas id="riskChart"></canvas></div></div>
+    <div class="card"><div class="card-header">High-Risk Origins</div><div id="topOrigins"><div class="loading">Loading...</div></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">All Shipment Risk Scores</div>
+    <div id="riskTable"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => { APP.renderNav(); load(); });
+
+async function load() {
+  const [risks, trending] = await Promise.all([
+    api('/risk').catch(() => []),
+    api('/risk/trending').catch(() => null),
+  ]);
+
+  if (risks.length) {
+    const levels = { low: 0, medium: 0, high: 0, critical: 0 };
+    risks.forEach(r => levels[r.level] = (levels[r.level] || 0) + 1);
+
+    // Stats
+    document.getElementById('riskStats').innerHTML = `
+      <div class="stat-card"><div class="label">Total Assessed</div><div class="value blue">${risks.length}</div></div>
+      <div class="stat-card"><div class="label">Low Risk</div><div class="value green">${levels.low||0}</div></div>
+      <div class="stat-card"><div class="label">Medium Risk</div><div class="value" style="color:#f59e0b;font-size:28px">${levels.medium||0}</div></div>
+      <div class="stat-card"><div class="label">High Risk</div><div class="value" style="color:#ef4444;font-size:28px">${levels.high||0}</div></div>
+      <div class="stat-card"><div class="label">Critical</div><div class="value" style="color:#dc2626;font-size:28px">${levels.critical||0}</div></div>
+      ${trending ? `<div class="stat-card"><div class="label">Issue Rate (7d)</div><div class="value warning">${trending.issueRate}%</div></div>` : ''}`;
+
+    // Chart
+    const chartCanvas = document.getElementById('riskChart');
+    const old = Chart.getChart(chartCanvas);
+    if (old) old.destroy();
+    new Chart(chartCanvas, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(levels),
+        datasets: [{ data: Object.values(levels), backgroundColor: ['#10b981','#f59e0b','#ef4444','#dc2626'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } } } }
+    });
+
+    // Top origins
+    document.getElementById('topOrigins').innerHTML = trending && trending.topRiskOrigins.length ?
+      trending.topRiskOrigins.map(o => `<div style="padding:6px 0;font-size:13px;border-bottom:1px solid var(--gray-100)"><strong>${escape(o.origin)}</strong> <span class="badge red">${o.c} issues</span></div>`).join('') :
+      '<div class="empty-state">No issue data</div>';
+
+    // Table
+    const colors = { low: 'green', medium: 'yellow', high: 'red', critical: 'red' };
+    document.getElementById('riskTable').innerHTML = `<table><thead><tr><th>Ref</th><th>Score</th><th>Level</th><th>Origin</th><th>Dest</th><th>Factors</th><th></th></tr></thead><tbody>
+      ${risks.map(r => `<tr>
+        <td>${escape(r.reference)}</td>
+        <td><strong>${r.score}</strong></td>
+        <td><span class="badge ${colors[r.level]||'gray'}">${r.level}</span></td>
+        <td>${escape(r.origin||'')}</td>
+        <td>${escape(r.destination||'')}</td>
+        <td style="font-size:11px;color:var(--gray-500)">${(r.factors||[]).map(f => f.factor).join(', ') || '-'}</td>
+        <td><a data-search="true" href="/shipment.html?id=${r.shipment_id}" class="btn btn-sm btn-primary">View</a></td>
+      </tr>`).join('')}</tbody></table>`;
+  } else {
+    document.getElementById('riskTable').innerHTML = '<div class="empty-state">No shipments to assess.</div>';
+  }
+}
+
+function escape(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+<div id="toast-container"></div>
+</body>
+</html>

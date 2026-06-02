@@ -17,28 +17,40 @@
 .mesh-node .label { font-size:13px;font-weight:600;color:var(--gray-800) }
 .mesh-node .addr { font-size:11px;color:var(--gray-400) }
 .conn-line { display:flex;align-items:center;color:var(--gray-400);font-size:18px }
-
+.sync-active { animation: pulse 1.5s infinite; }
 </style>
 </head>
 <body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">☰</button>
+  <span class="title">GLM</span>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Global Logistics &amp; Supply Chain Mesh</h1>
     <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">✕</button>
   </div>
-  <nav class="sidebar-nav">
-    <a href="/">Dashboard</a>
-    <a href="/shipments.html">Shipments</a>
-    <a href="/compliance.html">Compliance</a>
-    <a href="/documents.html">Documents</a>
-    <a href="/notifications.html">Notifications</a>
-    <a href="/network.html" class="active">Network</a>
-  <a href="/audit.html">Audit Log</a></nav>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a>
+    <a data-search="true" href="/shipments.html">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/slas.html">SLAs</a>
+    <a data-search="true" href="/audit.html">Audit Log</a>
+    <a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
+  </nav>
 </div>
 <div class="main">
   <div class="page-header">
     <h2>P2P Network</h2>
-    <span class="ws-status disconnected">Offline</span>
+    <span class="ws-status disconnected" id="wsStatus">Disconnected</span>
   </div>
 
   <div class="node-card">
@@ -54,6 +66,21 @@
   <div class="card">
     <div class="card-header">Connected Peers</div>
     <div id="peerList"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Database Sync</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-primary" onclick="triggerSync()" id="syncBtn">Trigger Full Sync</button>
+      </div>
+    </div>
+    <div id="syncStatus"><div class="loading">Loading...</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Sync Log</div>
+    <div id="syncLog"><div class="loading">Loading...</div></div>
   </div>
 
   <div class="card">
@@ -114,14 +141,85 @@ async function load() {
         ${net.peers.map(p => `<tr><td><span class="dot-online"></span>${p.nodeId || 'unknown'}</td><td>${p.address}</td><td>${formatDate(p.connectedAt)}</td></tr>`).join("")}
       </tbody></table>`;
     }
+
+    // Load sync status
+    loadSyncStatus();
+    loadSyncLog();
   } catch(e) {
     document.getElementById("localNode").innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+async function loadSyncStatus() {
+  try {
+    const sync = await api("/network/sync");
+    const el = document.getElementById("syncStatus");
+    if (!sync || sync.error) {
+      el.innerHTML = '<div class="empty-state">Sync not available. P2P not running.</div>';
+      return;
+    }
+    const btn = document.getElementById("syncBtn");
+    if (sync.inProgress) { btn.disabled = true; btn.textContent = "Syncing..."; btn.className = "btn btn-sm sync-active"; }
+    else { btn.disabled = false; btn.textContent = "Trigger Full Sync"; btn.className = "btn btn-sm btn-primary"; }
+
+    let tablesHtml = "";
+    let total = 0;
+    if (sync.tables) {
+      tablesHtml = '<table><thead><tr><th>Table</th><th>Rows</th><th>Syncable</th></tr></thead><tbody>';
+      for (const [table, count] of Object.entries(sync.tables)) {
+        total += count;
+        tablesHtml += `<tr><td>${table}</td><td>${count}</td><td><span style="color:var(--success)">✓</span></td></tr>`;
+      }
+      tablesHtml += `</tbody></table>`;
+    }
+    el.innerHTML = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="label">Total rows</div><div class="value blue">${sync.totalRows || total}</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="label">Syncable tables</div><div class="value green">${sync.syncableTables || Object.keys(sync.tables || {}).length}</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="label">Last sync</div><div class="value" style="font-size:16px">${sync.lastSyncAt ? formatDate(sync.lastSyncAt) : "Never"}</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="label">Status</div><div class="value" style="font-size:16px">${sync.inProgress ? '<span style="color:var(--warning)">● Syncing</span>' : '<span style="color:var(--success)">● Idle</span>'}</div></div>
+      </div>
+      <div class="table-wrap">${tablesHtml}</div>
+    `;
+  } catch(e) {
+    document.getElementById("syncStatus").innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+async function loadSyncLog() {
+  try {
+    const log = await api("/network/sync/log?limit=20");
+    const el = document.getElementById("syncLog");
+    if (!log || log.length === 0) {
+      el.innerHTML = '<div class="empty-state">No sync events yet.</div>';
+      return;
+    }
+    el.innerHTML = `<table><thead><tr><th>Time</th><th>Peer</th><th>Action</th><th>Details</th></tr></thead><tbody>
+      ${log.map(l => `<tr><td style="white-space:nowrap">${formatDate(l.created_at)}</td><td style="font-family:monospace;font-size:12px">${l.peer_node_id}</td><td><span class="badge ${l.action.includes('error') ? 'red' : 'blue'}">${l.action}</span></td><td style="font-size:12px;color:var(--gray-500)">${l.details || ''}</td></tr>`).join("")}
+    </tbody></table>`;
+  } catch(e) {
+    document.getElementById("syncLog").innerHTML = `<div class="error">${e.message}</div>`;
+  }
+}
+
+async function triggerSync() {
+  const btn = document.getElementById("syncBtn");
+  btn.disabled = true; btn.textContent = "Triggering...";
+  try {
+    const result = await api("/network/sync/trigger", { method: "POST" });
+    APP.toast("Sync triggered", result.triggered ? "Request sent to all peers" : "Failed", result.triggered ? "success" : "error");
+    loadSyncStatus();
+  } catch(e) {
+    APP.toast("Sync error", e.message, "error");
+    btn.disabled = false; btn.textContent = "Trigger Full Sync";
   }
 }
 
 connectWS();
 load();
 setInterval(load, 5000);
+setInterval(loadSyncLog, 10000);
 </script>
+<div id="toast-container"></div>
 </body>
 </html>

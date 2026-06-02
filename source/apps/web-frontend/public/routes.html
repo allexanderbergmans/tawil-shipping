@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Route Optimizer — Global Logistics Mesh</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
+<div class="sidebar">
+  <div class="sidebar-header"><h1>Global Logistics &amp; Supply Chain Mesh</h1><div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button></div>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a><a data-search="true" href="/shipments.html">Shipments</a><a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/slas.html">SLAs</a><a data-search="true" href="/documents.html">Documents</a><a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a><a data-search="true" href="/audit.html">Audit Log</a><a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html" class="active">Routes</a>
+  </nav>
+</div>
+<div class="main">
+  <div class="page-header"><h2>Multi-Modal Route Optimizer</h2><div><span class="ws-status disconnected" id="wsStatus">Disconnected</span></div></div>
+
+  <div class="card">
+    <div class="card-header">Find Routes</div>
+    <div class="filter-bar">
+      <div class="form-group"><label>Origin</label><input id="rOrigin" list="laneList" placeholder="e.g. Shanghai" required></div>
+      <div class="form-group"><label>Destination</label><input id="rDest" list="laneList" placeholder="e.g. Rotterdam" required></div>
+      <div class="form-group"><label>Weight (kg)</label><input id="rWeight" type="number" value="1000" style="width:100px"></div>
+      <div class="form-group"><label>Priority</label><select id="rPriority" style="width:130px"><option value="balanced">Balanced</option><option value="cost">Lowest Cost</option><option value="time">Fastest</option><option value="eco">Greenest</option></select></div>
+      <div class="form-group" style="display:flex;align-items:end"><button class="btn btn-primary" onclick="search()">Search</button></div>
+    </div>
+    <datalist id="laneList"></datalist>
+  </div>
+
+  <div id="results"><div class="empty-state" style="margin:40px 0">Enter origin and destination to compare routes.</div></div>
+</div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ws.js"></script>
+<script src="/js/app.js"></script>
+<script>
+APP.checkAuth().then(() => { APP.renderNav(); loadLanes(); });
+
+async function loadLanes() {
+  try {
+    const lanes = await api('/optimize/lanes');
+    document.getElementById('laneList').innerHTML = lanes.map(l => `<option value="${l.origin}"><option value="${l.destination}">`).join('');
+  } catch {}
+}
+
+async function search() {
+  const origin = document.getElementById('rOrigin').value.trim();
+  const dest = document.getElementById('rDest').value.trim();
+  const weight = document.getElementById('rWeight').value || 1000;
+  const prioritize = document.getElementById('rPriority').value;
+  if (!origin || !dest) { alert('Enter origin and destination'); return; }
+  try {
+    const res = await api('/optimize?origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent(dest) + '&weight=' + weight + '&prioritize=' + prioritize);
+    const el = document.getElementById('results');
+    if (!res.routes || !res.routes.length) { el.innerHTML = '<div class="empty-state">' + (res.note || 'No routes found.') + '</div>'; return; }
+    el.innerHTML = `
+      <div class="stats-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Lane</div><div class="value blue" style="font-size:16px">${res.origin} → ${res.destination}</div></div>
+        <div class="stat-card"><div class="label">Cargo Weight</div><div class="value">${res.weight_kg.toLocaleString()} kg</div></div>
+        <div class="stat-card"><div class="label">Priority</div><div class="value" style="text-transform:capitalize">${res.prioritize}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:20px">
+        ${res.routes.map(r => `
+          <div class="card" style="${r === res.recommended ? 'border:2px solid var(--primary)' : ''}">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span class="badge ${r.mode === 'air' ? 'blue' : r.mode === 'sea' ? 'green' : r.mode === 'rail' ? 'yellow' : 'gray'}">${r.mode.toUpperCase()}</span>
+              ${r === res.recommended ? '<span class="badge green" style="font-size:10px">RECOMMENDED</span>' : ''}
+            </div>
+            <div style="margin-top:10px;font-size:13px">
+              <div><strong>${r.transit_days} days</strong> transit</div>
+              <div><strong>$${r.total_cost.toLocaleString()}</strong> total cost</div>
+              <div><strong>${r.total_co2_kg.toLocaleString()} kg</strong> CO₂</div>
+              <div>Reliability: ${Math.round(r.reliability * 100)}%</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <table><thead><tr><th>Mode</th><th>Days</th><th>Cost/kg</th><th>Total Cost</th><th>CO₂/kg</th><th>Total CO₂</th><th>Reliability</th></tr></thead><tbody>
+        ${res.routes.map(r => `<tr${r === res.recommended ? ' style="background:var(--primary-light)"' : ''}>
+          <td><span class="badge ${r.mode === 'air' ? 'blue' : r.mode === 'sea' ? 'green' : r.mode === 'rail' ? 'yellow' : 'gray'}">${r.mode.toUpperCase()}</span></td>
+          <td>${r.transit_days}</td><td>$${r.cost_per_kg}</td><td><strong>$${r.total_cost.toLocaleString()}</strong></td>
+          <td>${r.co2_per_kg} kg</td><td>${r.total_co2_kg.toLocaleString()} kg</td>
+          <td>${Math.round(r.reliability * 100)}%</td>
+        </tr>`).join('')}
+      </tbody></table>`;
+  } catch(e) { document.getElementById('results').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+</script>
+<div id="toast-container"></div>
+</body>
+</html>

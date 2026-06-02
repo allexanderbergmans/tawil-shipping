@@ -7,27 +7,38 @@
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+<div class="sidebar-overlay"></div>
+<div class="mobile-header">
+  <button class="hamburger" id="hamburger">â˜°</button>
+  <span class="title">GLM</span>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Global Logistics &amp; Supply Chain Mesh</h1>
     <div class="sub">Bir Tawil Logistics Authority</div>
+    <button class="sidebar-toggle">âœ•</button>
   </div>
-  <nav class="sidebar-nav">
-    <a href="/">Dashboard</a>
-    <a href="/shipments.html" class="active">Shipments</a>
-    <a href="/compliance.html">Compliance</a>
-    <a href="/documents.html">Documents</a>
-    <a href="/notifications.html">Notifications</a>
-    <a href="/network.html">Network</a>
-  <a href="/audit.html">Audit Log</a></nav>
+  <nav class="sidebar-nav" data-search-group="Navigation">
+    <a data-search="true" href="/">Dashboard</a>
+    <a data-search="true" href="/shipments.html" class="active">Shipments</a>
+    <a data-search="true" href="/compliance.html">Compliance</a>
+    <a data-search="true" href="/documents.html">Documents</a>
+    <a data-search="true" href="/notifications.html">Notifications</a>
+    <a data-search="true" href="/network.html">Network</a>
+    <a data-search="true" href="/slas.html">SLAs</a>
+    <a data-search="true" href="/audit.html">Audit Log</a>
+    <a data-search="true" href="/risk.html">Risk</a>
+    <a data-search="true" href="/routes.html">Routes</a>
+    <a data-search="true" href="/telemetry.html">Telemetry</a>
+    <a data-search="true" href="/lanes.html">Trade Lanes</a>
+  </nav>
 </div>
 <div class="main">
   <div class="page-header">
     <h2>Shipments</h2>
-    <div style="display:flex;gap:8px"><span class="ws-status disconnected">Offline</span><button class="btn btn-primary" onclick="showCreate()">+ New Shipment</button>
+    <div style="display:flex;gap:8px"><span class="ws-status disconnected" id="wsStatus">Disconnected</span><button class="sound-toggle" id="soundToggle" onclick="APP.toggleSound(); this.classList.toggle('muted', !APP.soundEnabled); this.textContent = APP.soundEnabled ? '🔊 Sound' : '🔇 Muted'">🔊 Sound</button><button class="btn btn-primary" onclick="showCreate()">+ New Shipment</button>
       <button class="btn btn-sm" onclick="showBulkImport()">Bulk Import</button>
-      <a href="/api/export/shipments/csv" class="btn btn-sm" onclick="return requireAuth(event)" id="exportCsv">CSV</a>
-      <a href="/api/export/shipments/json" class="btn btn-sm" onclick="return requireAuth(event)" id="exportJson">JSON</a>
+      <button class="btn btn-sm" onclick="showExportModal()">Export</button>
     </div>
   </div>
 
@@ -40,6 +51,15 @@
     <div class="form-group" style="display:flex;align-items:end;margin-bottom:0">
       <button class="btn btn-sm" onclick="clearFilters()">Clear</button>
     </div>
+  </div>
+
+  <div class="quick-filters">
+    <button class="qfilter" onclick="quickFilter('in_transit')">In Transit</button>
+    <button class="qfilter" onclick="quickFilter('delayed')">Delayed</button>
+    <button class="qfilter" onclick="quickFilter('delivered')">Delivered</button>
+    <button class="qfilter" onclick="quickFilter('pending')">Pending</button>
+    <button class="qfilter" onclick="quickFilter('exception')">Exceptions</button>
+    <button class="qfilter" onclick="quickFilter('cleared')">Cleared</button>
   </div>
 
   <div class="card" id="createForm" style="display:none">
@@ -78,6 +98,8 @@
     <div id="bulkResult" style="margin-top:12px"></div>
   </div>
 
+  <div id="bulkBar" class="bulk-bar"><span class="count" id="bulkCount">0</span> selected <span class="spacer"></span><button class="btn btn-sm" onclick="bulkExport()">Export selected</button></div>
+
   <div id="shipmentsTable"><div class="loading">Loading...</div></div>
   <div id="pagination" class="pagination" style="display:none"></div>
 </div>
@@ -87,14 +109,72 @@
 <script src="/js/app.js"></script>
 <script>
 let _page = 1;
-const PAGE_SIZE = 15;
+let PAGE_SIZE = APP.rowsPerPagePref;
+let _selected = new Set();
+let _allIds = [];
+let _sortCol = -1;
+let _sortDir = "asc";
+let _list = [];
 
 APP.checkAuth().then(() => { APP.renderNav(); load(); });
 
-function requireAuth(e) { if (!APP.isLoggedIn()) { e.preventDefault(); alert('Sign in to export'); } }
+function requireAuth(e) { if (!APP.isLoggedIn()) { e.preventDefault(); APP.toast("Sign in required", "", "warning"); } }
 
-async function load(pg) {
+function quickFilter(status) {
+  document.getElementById('filterStatus').value = status;
+  document.querySelectorAll('.qfilter').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().replace(' ', '_') === status || (status === 'exception' && b.textContent === 'Exceptions')));
+  load(1);
+}
+
+function showExportModal() {
+  if (!APP.isLoggedIn()) { APP.toast("Sign in required", "Please sign in to export", "warning"); return; }
+  APP.showExport("Shipments", [
+    { value: "reference", label: "Reference" }, { value: "origin", label: "Origin" },
+    { value: "destination", label: "Destination" }, { value: "status", label: "Status" },
+    { value: "cargo_value", label: "Value" }, { value: "weight_kg", label: "Weight" },
+    { value: "shipper_name", label: "Shipper" }, { value: "consignee_name", label: "Consignee" },
+    { value: "created_at", label: "Created" },
+  ], (format, fields) => {
+    const url = "/api/export/shipments/" + format + "?fields=" + fields.join(",");
+    window.open(url, "_blank");
+    APP.toast("Export started", format.toUpperCase() + " download", "success");
+  });
+}
+
+function toggleSelectAll(chk) {
+  _selected.clear();
+  if (chk.checked) _list.forEach(s => _selected.add(s.id));
+  updateBulkUI();
+  renderRows();
+}
+
+function toggleSelect(id, chk) {
+  if (chk.checked) _selected.add(id); else _selected.delete(id);
+  updateBulkUI();
+}
+
+function updateBulkUI() {
+  const bar = document.getElementById('bulkBar');
+  const count = _selected.size;
+  document.getElementById('bulkCount').textContent = count;
+  bar.classList.toggle('active', count > 0);
+}
+
+function renderRows() {
+  document.querySelectorAll('#shipmentsTable tbody tr').forEach(tr => {
+    const id = tr.dataset.id;
+    if (id) {
+      const cb = tr.querySelector('input[type=checkbox]');
+      if (cb) cb.checked = _selected.has(id);
+      tr.style.background = _selected.has(id) ? 'var(--primary-light)' : '';
+    }
+  });
+}
+
+async function load(pg, sortCol, sortDir) {
   if (pg !== undefined) _page = pg;
+  if (sortCol !== undefined) _sortCol = sortCol;
+  if (sortDir !== undefined) _sortDir = sortDir;
   try {
     const params = new URLSearchParams();
     const st = document.getElementById('filterStatus').value;
@@ -103,30 +183,59 @@ async function load(pg) {
     if (st) params.set('status', st); if (or) params.set('origin', or); if (de) params.set('destination', de);
     params.set('limit', PAGE_SIZE);
     params.set('offset', (_page - 1) * PAGE_SIZE);
+    if (_sortCol >= 0) {
+      const colMap = ['reference', 'origin', 'destination', 'status', 'cargo_value', 'created_at'];
+      params.set('sort', colMap[_sortCol] || 'created_at');
+      params.set('order', _sortDir);
+    }
     const res = await api('/shipments?' + params.toString());
-    const list = res.data || [];
+    _list = res.data || [];
     const total = res.total || 0;
     const pages = res.pages || 1;
 
-    const tbody = document.getElementById('shipmentsTable');
-    if (list.length === 0) { tbody.innerHTML = '<div class="empty-state">No shipments.</div>'; document.getElementById('pagination').style.display = 'none'; return; }
-    tbody.innerHTML = `<table><thead><tr><th>Ref</th><th>Origin</th><th>Destination</th><th>Status</th><th>Value</th><th>Created</th><th></th></tr></thead><tbody>
-      ${list.map(s => `<tr><td>${s.reference}</td><td>${s.origin}</td><td>${s.destination}</td><td>${statusBadge(s.status)}</td><td>${formatCurrency(s.cargo_value)}</td><td style="white-space:nowrap">${formatDate(s.created_at)}</td><td><a href="/shipment.html?id=${s.id}" class="btn btn-sm btn-primary">View</a></td></tr>`).join('')}
-    </tbody></table>`;
+    // Clear selections that no longer exist
+    for (const id of _selected) if (!_list.find(s => s.id === id)) _selected.delete(id);
+    updateBulkUI();
 
-    const pgEl = document.getElementById('pagination');
-    pgEl.style.display = pages > 1 ? 'flex' : 'none';
-    let pgHtml = `<span class="pg-info">Page ${_page} of ${pages} (${total} total)</span><div class="pg-btns">`;
-    pgHtml += `<button class="btn btn-sm" onclick="load(1)" ${_page <= 1 ? 'disabled' : ''}>&laquo; First</button>`;
-    pgHtml += `<button class="btn btn-sm" onclick="load(${_page - 1})" ${_page <= 1 ? 'disabled' : ''}>&lsaquo; Prev</button>`;
-    for (let p = Math.max(1, _page - 2); p <= Math.min(pages, _page + 2); p++) {
-      pgHtml += `<button class="btn btn-sm ${p === _page ? 'btn-primary' : ''}" onclick="load(${p})">${p}</button>`;
-    }
-    pgHtml += `<button class="btn btn-sm" onclick="load(${_page + 1})" ${_page >= pages ? 'disabled' : ''}>Next &rsaquo;</button>`;
-    pgHtml += `<button class="btn btn-sm" onclick="load(${pages})" ${_page >= pages ? 'disabled' : ''}>Last &raquo;</button>`;
-    pgHtml += '</div>';
-    pgEl.innerHTML = pgHtml;
+    const tbody = document.getElementById('shipmentsTable');
+    if (_list.length === 0) { tbody.innerHTML = '<div class="empty-state">No shipments.</div>'; document.getElementById('pagination').style.display = 'none'; return; }
+    const allChecked = _list.length > 0 && _list.every(s => _selected.has(s.id));
+    tbody.innerHTML = `<table id="shipmentsTableInner"><thead><tr><th style="width:32px"><input type="checkbox" onchange="toggleSelectAll(this)" ${allChecked ? 'checked' : ''}></th><th>★</th><th>Ref</th><th>Origin</th><th>Destination</th><th>Status</th><th>Value</th><th>Risk</th><th>Created</th><th></th></tr></thead><tbody>
+      ${_list.map(s => `<tr class="has-tooltip" data-id="${s.id}" style="${_selected.has(s.id) ? 'background:var(--primary-light)' : ''}"><td><input type="checkbox" onchange="toggleSelect('${s.id}', this)" ${_selected.has(s.id) ? 'checked' : ''}></td><td><span class="fav-star ${APP.isFavorite(s.id) ? 'active' : ''}" onclick="APP.toggleFavorite('${s.id}');this.classList.toggle('active')">★</span></td><td><span class="copy-ref" onclick="APP.copyRef('${s.reference}')" title="Click to copy reference">${s.reference}</span></td><td>${s.origin}</td><td>${s.destination}</td><td>${statusBadge(s.status)}</td><td>${formatCurrency(s.cargo_value)}</td><td>${s.risk_score != null ? APP.riskBadge(s.risk_score) : '—'}</td><td style="white-space:nowrap">${formatDate(s.created_at)}</td><td><a data-search="true" href="/shipment.html?id=${s.id}" class="btn btn-sm btn-primary">View</a></td><div class="ship-tooltip"><b>${s.reference}</b><br>${s.origin} → ${s.destination}<br>Value: ${formatCurrency(s.cargo_value)}${s.weight_kg ? ' | Weight: ' + formatNum(s.weight_kg) + ' kg' : ''}${s.shipper_name ? '<br>Shipper: ' + s.shipper_name : ''}${s.consignee_name ? '<br>Consignee: ' + s.consignee_name : ''}</div></tr>`).join('')}
+    </tbody></table>`;
+    APP.makeSortable(document.getElementById('shipmentsTableInner'), (col, dir) => load(1, col, dir));
+    APP.makeRowsExpandable(document.getElementById('shipmentsTableInner'), (tr) => {
+      const s = _list.find(x => x.id === tr.dataset.id);
+      if (!s) return '';
+      return `<div class="detail-grid">
+        <div><span class="label">Shipper</span><div class="value">${s.shipper_name || '—'}</div></div>
+        <div><span class="label">Consignee</span><div class="value">${s.consignee_name || '—'}</div></div>
+        <div><span class="label">Weight</span><div class="value">${s.weight_kg ? formatNum(s.weight_kg) + ' kg' : '—'}</div></div>
+        <div><span class="label">Value</span><div class="value">${formatCurrency(s.cargo_value)}</div></div>
+        <div><span class="label">Created</span><div class="value">${formatDate(s.created_at)}</div></div>
+        <div><span class="label">Updated</span><div class="value">${s.updated_at ? formatDate(s.updated_at) : '—'}</div></div>
+      </div>`;
+    });
+
+    APP.renderPagination(document.getElementById('pagination'), total, _page, PAGE_SIZE, pg => load(pg), limit => { PAGE_SIZE = limit; APP.rowsPerPagePref = limit; load(1); });
+    document.getElementById('pagination').style.display = 'flex';
   } catch(e) { document.getElementById('shipmentsTable').innerHTML = `<div class="error">${e.message}</div>`; }
+}
+
+function bulkExport() {
+  APP.showExport("Shipments", [
+    { value: "reference", label: "Reference" }, { value: "origin", label: "Origin" },
+    { value: "destination", label: "Destination" }, { value: "status", label: "Status" },
+    { value: "cargo_value", label: "Value" }, { value: "weight_kg", label: "Weight (kg)" },
+    { value: "shipper_name", label: "Shipper" }, { value: "consignee_name", label: "Consignee" },
+    { value: "created_at", label: "Created" }, { value: "updated_at", label: "Updated" },
+  ], (format, fields) => {
+    const ids = Array.from(_selected);
+    if (ids.length === 0) { APP.toast("No shipments selected", "", "warning"); return; }
+    const url = "/api/export/shipments/" + format + "?ids=" + ids.join(",") + "&fields=" + fields.join(",");
+    window.open(url, "_blank");
+    APP.toast("Export started", ids.length + " shipments", "success");
+  });
 }
 
 function clearFilters() {
@@ -161,5 +270,6 @@ async function bulkImport() {
   } catch(e) { document.getElementById('bulkResult').innerHTML = `<div class="error">${e.message}</div>`; }
 }
 </script>
+<div id="toast-container"></div>
 </body>
 </html>
